@@ -1,0 +1,44 @@
+{
+  "name": "glassspider",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Glassspider bid intelligence product for the Laightworks ecosystem.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alaight/glassspider.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/alaight/glassspider/issues"
+  },
+  "homepage": "https://github.com/alaight/glassspider#readme",
+  "dependencies": {
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.104.1",
+    "cheerio": "^1.2.0",
+    "next": "^16.2.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.4",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^6.0.3"
+  }
+}

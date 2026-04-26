@@ -1,0 +1,78 @@
+export type SourceStatus = "active" | "paused" | "draft";
+export type RunType = "crawl" | "scrape" | "classify";
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type ReviewStatus = "pending" | "approved" | "rejected" | "needs_review";
+
+export type Source = {
+  id: string;
+  name: string;
+  slug: string;
+  base_url: string;
+  entry_urls: string[];
+  status: SourceStatus;
+  crawl_frequency: string | null;
+  scrape_frequency: string | null;
+  compliance_notes: string | null;
+  last_crawled_at: string | null;
+  last_scraped_at: string | null;
+  created_at: string;
+};
+
+export type SourceRule = {
+  id: string;
+  source_id: string;
+  rule_type: "include" | "exclude" | "detail" | "listing";
+  pattern: string;
+  description: string | null;
+  priority: number;
+  is_active: boolean;
+};
+
+export type PipelineRun = {
+  id: string;
+  source_id: string | null;
+  run_type: RunType;
+  status: RunStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  pages_visited: number;
+  urls_discovered: number;
+  records_extracted: number;
+  records_updated: number;
+  ai_calls: number;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type DiscoveredUrl = {
+  id: string;
+  source_id: string;
+  url: string;
+  url_type: "listing" | "detail" | "award" | "document" | "unknown";
+  status: "new" | "queued" | "scraped" | "ignored" | "failed";
+  http_status: number | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_crawled_at: string | null;
+  matched_rule: string | null;
+};
+
+export type BidRecord = {
+  id: string;
+  source_id: string | null;
+  source_url: string;
+  title: string;
+  buyer_name: string | null;
+  supplier_name: string | null;
+  sector_primary: string | null;
+  region: string | null;
+  contract_value_awarded: number | null;
+  currency: string | null;
+  published_date: string | null;
+  award_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  estimated_renewal_date: string | null;
+  relevance_score: number | null;
+  review_status: ReviewStatus;
+};

@@ -19,3 +19,6 @@ Thumbs.db
 # Logs and caches
 *.log
 .cache/
+.next/
+node_modules/
+tsconfig.tsbuildinfo

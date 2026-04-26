@@ -19,8 +19,25 @@
 ## Docs
 
 - **`docs/CURRENT_STATE.md`** — update when behaviour, routes, or integrations change.
+- **`docs/DB_CURRENT_STATE.md`** — update when schema, RLS, or database assumptions change.
+- **`docs/SOURCE_INVESTIGATION.md`** — update when adding or changing source crawl assumptions.
 - **`README.md`** — setup and env vars for humans.
 
 ## Project slug
 
 - Use **`glassspider`** as `PROJECT_SLUG` (or match `projects.slug` in the database if it differs).
+
+## App commands
+
+- `npm run dev`
+- `npm run build`
+- `npm run lint`
+- `npm run typecheck`
+
+## Runtime notes
+
+- Next.js App Router routes under `app/`.
+- Server Supabase helpers live in `lib/supabase/server.ts`.
+- Product access checks live in `lib/auth.ts` and must remain server-side.
+- Scraping pipeline code lives in `lib/scraping/`.
+- `SUPABASE_SERVICE_ROLE_KEY` is used only by server-side run/cron code.
