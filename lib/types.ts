@@ -2,6 +2,8 @@ export type SourceStatus = "active" | "paused" | "draft";
 export type RunType = "crawl" | "scrape" | "classify";
 export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type ReviewStatus = "pending" | "approved" | "rejected" | "needs_review";
+export type JobType = "crawl" | "scrape" | "classify";
+export type JobStatus = "pending" | "running" | "completed" | "failed";
 
 export type Source = {
   id: string;
@@ -41,6 +43,25 @@ export type PipelineRun = {
   records_updated: number;
   ai_calls: number;
   error_message: string | null;
+  created_at: string;
+};
+
+export type PipelineJob = {
+  id: string;
+  type: JobType;
+  source_id: string;
+  status: JobStatus;
+  payload: Record<string, unknown>;
+  attempt_count: number;
+  max_attempts: number;
+  last_error: string | null;
+  scheduled_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  locked_by: string | null;
+  locked_at: string | null;
+  result: Record<string, unknown>;
+  created_by: string | null;
   created_at: string;
 };
 

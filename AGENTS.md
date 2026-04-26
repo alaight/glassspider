@@ -39,5 +39,7 @@
 - Next.js App Router routes under `app/`.
 - Server Supabase helpers live in `lib/supabase/server.ts`.
 - Product access checks live in `lib/auth.ts` and must remain server-side.
-- Scraping pipeline code lives in `lib/scraping/`.
-- `SUPABASE_SERVICE_ROLE_KEY` is used only by server-side run/cron code.
+- Next.js is the Vercel control plane and must enqueue jobs only; do not run crawl/scrape/classify work in route handlers or server actions.
+- Python worker code lives in `worker/app/` and owns crawl/scrape/classify execution on Fly.io.
+- `SUPABASE_SERVICE_ROLE_KEY` belongs only in the worker environment, never in Vercel or browser-exposed env vars.
+- Job execution state lives in `glassspider_jobs`; use atomic claim/complete/fail RPCs and preserve one active job per source/type.

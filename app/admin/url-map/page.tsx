@@ -1,3 +1,4 @@
+import { startSourceRun } from "@/app/admin/actions";
 import { AccessPanel } from "@/components/access-panel";
 import { Shell } from "@/components/shell";
 import { requireAdminAccess } from "@/lib/auth";
@@ -25,7 +26,7 @@ export default async function UrlMapPage() {
     <Shell
       eyebrow="Admin"
       title="URL map"
-      description="Inspect discovered URLs before detail scraping. This is the visibility layer for crawler behaviour and source structure changes."
+      description="Inspect discovered URLs before detail scraping. Scrape jobs are explicit user-controlled actions against selected URLs or filters."
       navItems={[
         { href: "/admin", label: "Overview" },
         { href: "/admin/sources", label: "Sources" },
@@ -45,6 +46,7 @@ export default async function UrlMapPage() {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">HTTP</th>
                 <th className="px-4 py-3">Last seen</th>
+                <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -62,11 +64,21 @@ export default async function UrlMapPage() {
                   <td className="px-4 py-3">{url.status}</td>
                   <td className="px-4 py-3">{url.http_status ?? "-"}</td>
                   <td className="px-4 py-3">{new Date(url.last_seen_at).toLocaleString()}</td>
+                  <td className="px-4 py-3">
+                    <form action={startSourceRun}>
+                      <input type="hidden" name="source_id" value={url.source_id} />
+                      <input type="hidden" name="run_type" value="scrape" />
+                      <input type="hidden" name="url_ids" value={url.id} />
+                      <button className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
+                        Queue scrape
+                      </button>
+                    </form>
+                  </td>
                 </tr>
               ))}
               {urls.data.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={5}>
+                  <td className="px-4 py-6 text-slate-500" colSpan={6}>
                     No URLs mapped yet.
                   </td>
                 </tr>

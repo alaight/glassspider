@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireAdminAccess } from "@/lib/auth";
-import { getSource, listSourceRules } from "@/lib/db";
-import { runSourcePipeline } from "@/lib/scraping/run";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { enqueueJob } from "@/lib/jobs";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 const runRequestSchema = z.object({
   sourceId: z.string().uuid(),
   runType: z.enum(["crawl", "scrape", "classify"]),
+  payload: z.record(z.string(), z.unknown()).optional(),
+  scheduledAt: z.string().datetime().optional(),
 });
 
 export async function POST(request: Request) {
@@ -26,35 +27,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid run request." }, { status: 400 });
   }
 
-  const service = createSupabaseServiceClient();
+  const supabase = await createSupabaseServerClient();
 
-  if (!service) {
-    return NextResponse.json(
-      { error: "SUPABASE_SERVICE_ROLE_KEY is required for pipeline runs." },
-      { status: 500 },
-    );
+  if (!supabase) {
+    return NextResponse.json({ error: "Supabase is not configured." }, { status: 500 });
   }
 
-  const [source, rules] = await Promise.all([
-    getSource(service, parsed.data.sourceId),
-    listSourceRules(service, parsed.data.sourceId),
-  ]);
-
-  if (!source.data) {
-    return NextResponse.json({ error: source.error ?? "Source not found." }, { status: 404 });
-  }
-
-  if (rules.error) {
-    return NextResponse.json({ error: rules.error }, { status: 500 });
-  }
-
-  const result = await runSourcePipeline({
-    supabase: service,
-    source: source.data,
-    rules: rules.data,
-    runType: parsed.data.runType,
-    triggeredBy: access.userId,
+  const result = await enqueueJob(supabase, {
+    type: parsed.data.runType,
+    sourceId: parsed.data.sourceId,
+    payload: parsed.data.payload ?? {},
+    scheduledAt: parsed.data.scheduledAt,
+    createdBy: access.userId,
   });
 
-  return NextResponse.json(result);
+  if (result.error || !result.data) {
+    return NextResponse.json({ error: result.error ?? "Job could not be queued." }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    jobId: result.data.id,
+    status: result.data.status,
+    type: result.data.type,
+    sourceId: result.data.source_id,
+  });
 }

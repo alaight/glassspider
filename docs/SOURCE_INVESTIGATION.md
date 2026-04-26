@@ -20,18 +20,21 @@ Read-only checks performed:
 
 ## Worker Decision
 
-Use a TypeScript crawler/scraper inside the Next.js codebase for the first MVP run path.
+Use a Python worker on Fly.io for crawl/scrape/classify execution.
 
 Reasoning:
 
-- The first pass only needs low-rate manual crawling and URL-map storage.
-- Keeping the worker interface in TypeScript reduces initial operational surface area.
-- The crawler can still be moved behind a queue or into a separate worker later because the pipeline is isolated under `lib/scraping/`.
-- Scrapy/Playwright remain options if a later source needs complex crawl state or JavaScript rendering.
+- Next.js/Vercel is the control plane and must not run heavy crawling or scraping.
+- Fly gives the scraper a persistent execution environment with retry/backoff and service-role access.
+- The worker currently uses HTTP + BeautifulSoup-style parsing; Scrapy/Playwright can be introduced inside the worker if later sources need complex crawl state or JavaScript rendering.
+- Crawl, scrape, and classify are separate user-controlled stages. Crawl does not automatically trigger scrape.
 
 ## Initial BidStats Seed
 
-The code includes a draft BidStats source seed in `lib/scraping/sources/bidstats.ts`:
+The code includes draft BidStats source seeds in both control-plane and worker locations:
+
+- Next source seed: `lib/source-seeds/bidstats.ts`
+- Worker source reference: `worker/app/pipeline/sources/bidstats.py`
 
 - Base URL: `https://bidstats.uk`
 - Entry URL: `https://bidstats.uk/tenders/`

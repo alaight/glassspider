@@ -4,10 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireAdminAccess } from "@/lib/auth";
-import { getSource, listSourceRules } from "@/lib/db";
-import { runSourcePipeline } from "@/lib/scraping/run";
-import { BIDSTATS_RULE_SEEDS, BIDSTATS_SOURCE_SEED } from "@/lib/scraping/sources/bidstats";
-import { createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
+import { buildJobPayload, enqueueJob, retryJob } from "@/lib/jobs";
+import { BIDSTATS_RULE_SEEDS, BIDSTATS_SOURCE_SEED } from "@/lib/source-seeds/bidstats";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const sourceSchema = z.object({
   name: z.string().min(2),
@@ -31,6 +30,10 @@ const ruleSchema = z.object({
 const runSchema = z.object({
   source_id: z.string().uuid(),
   run_type: z.enum(["crawl", "scrape", "classify"]),
+});
+
+const retrySchema = z.object({
+  job_id: z.string().uuid(),
 });
 
 export async function createSource(formData: FormData) {
@@ -117,35 +120,57 @@ export async function startSourceRun(formData: FormData) {
     throw new Error("Choose a source and run type.");
   }
 
-  const service = createSupabaseServiceClient();
+  const supabase = await createSupabaseServerClient();
 
-  if (!service) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for pipeline runs.");
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
   }
 
-  const source = await getSource(service, parsed.data.source_id);
-  const rules = await listSourceRules(service, parsed.data.source_id);
+  const payload = buildJobPayload(parsed.data.run_type, formData);
 
-  if (!source.data) {
-    throw new Error(source.error ?? "Source not found.");
-  }
-
-  if (rules.error) {
-    throw new Error(rules.error);
-  }
-
-  await runSourcePipeline({
-    supabase: service,
-    source: source.data,
-    rules: rules.data,
-    runType: parsed.data.run_type,
-    triggeredBy: access.userId,
+  const { error } = await enqueueJob(supabase, {
+    type: parsed.data.run_type,
+    sourceId: parsed.data.source_id,
+    payload,
+    createdBy: access.userId,
   });
+
+  if (error) {
+    throw new Error(error);
+  }
 
   revalidatePath("/admin");
   revalidatePath("/admin/runs");
   revalidatePath("/admin/url-map");
   revalidatePath("/dashboard");
+}
+
+export async function retryFailedJob(formData: FormData) {
+  const access = await requireAdminAccess();
+
+  if (access.status !== "granted") {
+    throw new Error(access.message ?? "Admin access required.");
+  }
+
+  const parsed = retrySchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    throw new Error("Choose a failed job to retry.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const { error } = await retryJob(supabase, parsed.data.job_id);
+
+  if (error) {
+    throw new Error(error);
+  }
+
+  revalidatePath("/admin/runs");
 }
 
 export async function seedBidStatsSource() {

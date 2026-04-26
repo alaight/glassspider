@@ -1,0 +1,23 @@
+app = "glassspider-worker"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "worker/Dockerfile"
+
+[env]
+  GLASSSPIDER_WORKER_PORT = "8080"
+  GLASSSPIDER_WORKER_POLL_INTERVAL_SECONDS = "15"
+  GLASSSPIDER_WORKER_SCHEDULER_INTERVAL_SECONDS = "300"
+  GLASSSPIDER_WORKER_USER_AGENT = "GlassspiderBot/0.1 (+https://laightworks.com)"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
