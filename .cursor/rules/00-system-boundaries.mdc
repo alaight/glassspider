@@ -1,0 +1,27 @@
+---
+description: Layering and boundaries for the glassspider codebase
+globs:
+  - "components/**"
+  - "app/**"
+  - "src/**"
+  - "lib/**"
+---
+
+# System Boundaries (Glassspider)
+
+This repository is the **glassspider** application. Boundaries below apply once the standard folders exist; adjust globs if you use a different layout (`src/` vs `app/` root).
+
+## Rules
+
+- **UI (`components/`, `app/**/*.tsx` or `src/` equivalents):** Render and handle interaction. Call internal `/api/*` routes or server modules for privileged work; do not embed secrets.
+- **API routes / server modules:** Own server-side auth checks, env-only secrets, and response shaping.
+- **`lib/`:** Shared utilities and thin clients—no hidden business-only logic that belongs in a dedicated domain layer if you introduce one later.
+- **Supabase:** Browser client only for patterns that match your auth model; session validation for protected data belongs on the server. Service role keys never ship to the client.
+
+## Database
+
+- Data for this product lives in **`glassspider_*`** tables in the shared Supabase project. See `multi-product-architecture.mdc` and `database-read-first.mdc`.
+
+## Not assumed
+
+- Do not assume another repo’s `services/` or `backend/` tree exists here unless you add it and document it in `docs/CURRENT_STATE.md`.

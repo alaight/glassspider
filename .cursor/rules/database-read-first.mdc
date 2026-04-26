@@ -1,0 +1,34 @@
+---
+description: Supabase/Postgres schema authority — shared DB with Laightworks, glassspider table prefix
+alwaysApply: false
+globs:
+  - "supabase/**/*"
+  - "lib/**/*"
+  - "app/**/*"
+  - "src/**/*"
+  - "**/*.sql"
+---
+
+# Schema and data authority (Glassspider)
+
+## Cause
+This project shares a database with Laightworks. Wrong table names or missing prefixes break RLS, migrations, and sibling products.
+
+## Intent
+Ground all schema-dependent work in the **real** database state and enforce **`glassspider_`** prefixes for this product’s tables.
+
+## This repository
+
+- **Primary store:** Supabase (Postgres) — same project as the Laightworks site unless `README.md` / `AGENTS.md` say otherwise.
+- Before writing queries, migrations, or types, confirm objects against **live schema** or **checked-in migrations** in this repo or the monorepo that owns them.
+- **Table naming:** Any new table created for glassspider-specific data MUST be named `glassspider_<entity>` (e.g. `glassspider_jobs`). Do not add unprefixed product tables from this app.
+
+## Shared vs product-owned
+
+- **Shared / ecosystem** tables (e.g. projects registry, access grants, auth users) follow hub conventions—do not rename or “claim” them from glassspider-only migrations without coordination.
+- **Glassspider-owned** data lives only in `glassspider_*` tables (plus FKs into shared tables where appropriate).
+
+## Workflow
+
+- When adding or changing schema: migrations + types/docs updated together; note changes in `docs/CURRENT_STATE.md` (and `docs/DB_CURRENT_STATE.md` if present).
+- If using the Supabase MCP for verification, use it to **read** and align understanding; apply changes through your normal migration workflow, not ad hoc production edits.

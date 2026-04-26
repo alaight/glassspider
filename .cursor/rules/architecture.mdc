@@ -1,0 +1,41 @@
+---
+description: Glassspider — repo purpose, stack expectations, integrations
+alwaysApply: true
+---
+
+# Architecture and Ownership (Glassspider)
+
+## Cause
+Ad hoc structure and unclear ownership make a shared-database product hard to evolve safely next to Laightworks.
+
+## Intent
+Keep integrations and data access predictable: one product, one deployable codebase, explicit use of the shared Supabase project with **`glassspider_` table prefixes**.
+
+## What this repo is
+
+- **Product:** [glassspider](https://github.com/alaight/glassspider) — a Laightworks ecosystem app.
+- **Database:** Shared Supabase/Postgres with the Laightworks site; see `.cursor/rules/multi-product-architecture.mdc` and `.cursor/rules/database-read-first.mdc`.
+- **Stack:** Align with sibling Laightworks apps unless this repo documents otherwise (e.g. Next.js App Router, TypeScript, Tailwind—add specifics to `README.md` and `docs/CURRENT_STATE.md` when the scaffold lands).
+
+## Data and external services
+
+- **Supabase:** Auth, Postgres, and RLS are the primary data plane. Inspect live schema or checked-in migrations before assuming table or column names.
+- **Naming:** All new application tables owned by glassspider use the prefix **`glassspider_`**.
+- Other integrations (analytics, queues, etc.) should be documented in `README.md`, `AGENTS.md`, and `docs/CURRENT_STATE.md` as they are added.
+
+## Ownership constraints
+
+- Prefer **API routes or server actions** for secrets, validation, and stable response shapes.
+- Put **shared helpers** in `lib/` (or the conventional folder you introduce); avoid duplicating fetch/transform logic across UI.
+- **UI** focuses on presentation and interaction; keep access checks server-side.
+
+## Prohibited patterns
+
+- Duplicating fetch or transform logic across many components without extracting shared helpers.
+- Adding glassspider tables without the `glassspider_` prefix.
+- A second “source of truth” for the same integration without retiring the old path.
+
+## Change discipline
+
+- Prefer small, reversible changes.
+- Update docs in the same change when behavior, env vars, or schema-relevant assumptions change.

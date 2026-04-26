@@ -1,0 +1,53 @@
+---
+description: Documentation discipline — SSOT and update expectations (glassspider)
+alwaysApply: true
+---
+
+# Docs Discipline
+
+## Cause
+Without a single place that tracks reality, agents and humans repeat stale assumptions—especially dangerous with a **shared database** across products.
+
+## Intent
+Keep **one authoritative “what exists”** document and align human and agent entry points.
+
+## Canonical files
+
+### Required in this repo
+
+- **`docs/CURRENT_STATE.md`** — source of truth for routes, API behaviour, external services, repo layout, and integration with Laightworks. **Update when those things change.**
+- **`README.md`** — human-facing setup, env vars, deploy.
+- **`AGENTS.md`** — agent runbook (package manager, Supabase/shared DB rules including `glassspider_` prefixes, gotchas).
+
+### Optional (add when relevant)
+
+- **`docs/DB_CURRENT_STATE.md`** — SQL overview, important tables, RLS notes (especially shared vs `glassspider_*` tables).
+- **`docs/systems/`** — per-system SSOTs; add `docs/systems/README.md` when the first system doc is added.
+- **`docs/adr/`** — short architectural decision records.
+
+Index: **`docs/README.md`** lists the above once more than one doc exists.
+
+## Update rules
+
+After **meaningful** changes to features, routes, API contracts, integrations, repo structure, or **database objects** glassspider uses:
+
+- **MANDATORY:** Update **`docs/CURRENT_STATE.md`** in the same PR or immediately after implementation.
+- **MANDATORY:** When `docs/DB_CURRENT_STATE.md` exists, update it after any migration that changes schema, indexes, or RLS.
+- When `docs/systems/` exists, update the relevant system file when that subsystem’s behaviour or surface changes.
+- Add an ADR under `docs/adr/` only for **non-obvious** decisions with real trade-offs.
+
+## ADR criteria
+
+Create `docs/adr/NNNN-short-title.md` when:
+
+- A non-obvious architectural or design decision was made, or  
+- Multiple options were considered with meaningful trade-offs.
+
+Do **not** create ADRs for straightforward implementation, cosmetic fixes, or transient investigation notes.
+
+## Prohibited patterns
+
+- Duplicate “state of the app” documents outside `docs/CURRENT_STATE.md` (and optional `docs/systems/` once introduced).
+- Letting **`docs/CURRENT_STATE.md`** fall behind code.
+- Referencing mandatory paths that do not exist; if you add a new SSOT file, create it and link it from `docs/README.md` in the same change.
+- Creating non-prefixed product tables in the shared database (use **`glassspider_`** per project rules).

@@ -1,0 +1,51 @@
+---
+description: Glassspider in the Laightworks hub-and-spoke ecosystem — auth, access, shared database
+alwaysApply: true
+---
+
+# Multi-Product Architecture (Glassspider)
+
+**Glassspider** is a product in the Laightworks hub-and-spoke ecosystem:
+
+- Hub: `laightworks.com/login` and `laightworks.com/dashboard`
+- Products: independent apps on `*.laightworks.com` (glassspider is one of them)
+- No `portal.laightworks.com`
+- No iframe integration unless explicitly approved
+
+## Auth And Security
+
+- All apps must validate Supabase sessions server-side.
+- Dashboard visibility does not grant product access.
+- Every product must independently check access before rendering protected UI or data.
+- Shared auth must work across `.laightworks.com` cookies.
+- Do not make shared auth changes without verifying the hub and at least one subdomain.
+- Never expose service role keys in browser code or `NEXT_PUBLIC_*` variables.
+
+## Project Identity
+
+- This repo is the **glassspider** product. Define `PROJECT_SLUG` as **`glassspider`** (or match `projects.slug` if the hub uses a different canonical slug—stay consistent with the database).
+- Product access logic must use `PROJECT_SLUG`; do not hardcode one-off access checks in multiple places.
+- Unauthenticated users redirect to `https://laightworks.com/login`.
+- Authenticated users without access see access denied.
+
+## Access Control
+
+- Access is validated through shared tables such as `projects` and `project_access` (ecosystem convention—confirm names in the live schema before coding).
+- Client-side-only access checks are prohibited.
+- Frontend and user-triggered routes use the user's Supabase session with RLS.
+- Trusted backend workers may use service role only server-side.
+
+## Database (shared with Laightworks)
+
+- Glassspider uses the **same Supabase/Postgres project** as the Laightworks site and sibling products.
+- **Every table this product introduces for its own data MUST be prefixed with `glassspider_`** (example: `glassspider_items`, not `items`).
+- Do not create glassspider-specific tables without the `glassspider_` prefix—they must not collide with Laightworks or other products.
+- Shared ecosystem tables (e.g. auth, `projects`, `project_access`) stay as defined by the hub; do not rename them from this repo.
+- Product rows should reference `project_id` (or the ecosystem’s canonical FK) when they belong to a registered project.
+
+## Architecture Discipline
+
+- Do not put major glassspider-only business logic into the hub/dashboard app; keep it in this repo.
+- This app must remain independently deployable.
+- Keep `/admin` for Laightworks owner operations and `/dashboard` for user-facing product launch (when applicable).
+- When routes, auth, schema, or cross-product behavior changes, update `docs/CURRENT_STATE.md` and any existing ecosystem docs this repo maintains.
