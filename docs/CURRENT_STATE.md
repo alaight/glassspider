@@ -67,11 +67,15 @@ flowchart TD
 
 ## Database
 
+- Shared access bootstrap migration: `supabase/migrations/20260425235900_laightworks_project_access_bootstrap.sql`.
+  - Creates hub-level `projects` and `project_access` tables when they are missing.
+  - Seeds the canonical `projects.slug = 'glassspider'` registry row.
 - Initial migration: `supabase/migrations/20260426000000_glassspider_bid_intelligence_initial_schema.sql`.
 - Job queue migration: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`.
 - Database prose: `docs/DB_CURRENT_STATE.md`.
-- The local Supabase CLI was unavailable during initial migration creation, so validate migrations against the live shared schema before applying them.
+- The local Supabase CLI was unavailable during migration creation, so validate migrations against the live shared schema before applying them.
 
 ## Environment
 
 - Required env vars are documented in the root **`README.md`** and `.env.example`.
+- The Fly worker is deployed from the repo root with `worker/fly.toml`; `worker/Dockerfile` copies `worker/requirements.txt` and `worker/app` from that root build context.

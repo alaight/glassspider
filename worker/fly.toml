@@ -1,5 +1,10 @@
-app = "glassspider-worker"
-primary_region = "lhr"
+# Glassspider Python worker — deploy from repo root:
+#   fly deploy -c worker/fly.toml
+#
+# Build context is the repository root; Dockerfile lives in worker/ and copies worker/* paths.
+
+app = "glassspider"
+primary_region = "ams"
 
 [build]
   dockerfile = "Dockerfile"
