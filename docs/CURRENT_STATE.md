@@ -78,4 +78,4 @@ flowchart TD
 ## Environment
 
 - Required env vars are documented in the root **`README.md`** and `.env.example`.
-- The Fly worker is deployed from the repo root with `worker/fly.toml`; `worker/Dockerfile` copies `worker/requirements.txt` and `worker/app` from that root build context.
+- The Fly worker uses `worker/fly.toml`; the Docker build context is the **`worker/`** directory (`fly deploy` from `worker/`, or `fly deploy worker --config worker/fly.toml` from the repo root). `worker/Dockerfile` copies `requirements.txt` and `app/` from that context.

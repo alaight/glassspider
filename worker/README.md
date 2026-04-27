@@ -37,12 +37,12 @@ uvicorn app.main:app --app-dir worker --reload --port 8080
 ## Fly.io
 
 ```bash
-cp worker/fly.toml.example worker/fly.toml
-fly launch -c worker/fly.toml --no-deploy
+cp fly.toml.example fly.toml
+fly launch --no-deploy
 fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GLASSSPIDER_WORKER_SECRET=...
-fly deploy -c worker/fly.toml
+fly deploy
 ```
 
-Run these commands from the repository root. The Fly config lives in `worker/`, but the Docker build context is the repository root.
+Run those from inside `worker/` (so the Fly working directory and Docker context are this folder). From the repository root instead: `fly deploy worker --config worker/fly.toml`.
 
 Keep at least one machine running so polling and the internal scheduler continue.
