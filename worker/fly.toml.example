@@ -1,3 +1,6 @@
+# Deploy from repository root: fly deploy -c worker/fly.toml
+# Docker build context is the repo root; Dockerfile paths use worker/...
+
 app = "glassspider-worker"
 primary_region = "lhr"
 

@@ -55,9 +55,9 @@ GLASSSPIDER_WORKER_SCHEDULER_INTERVAL_SECONDS=300
 ## Deployment
 
 - Deploy the Next.js app to Vercel with the web env vars above.
-- Deploy the Python worker to Fly.io (`worker/fly.toml`; build context is the `worker/` folder — see **`worker/README.md`**).
+- Deploy the Python worker to Fly.io with **`worker/fly.toml`** from the **repo root** (Docker build context is the repository root; see **`worker/README.md`**).
 - Copy `worker/fly.toml.example` to `worker/fly.toml`, set the app name/region, then set worker secrets with `fly secrets set`.
-- Deploy the worker with the **`worker/` directory as the Fly working directory** (build context): either `cd worker` then `fly deploy`, or from the repo root run `fly deploy worker --config worker/fly.toml`.
+- Deploy with: `fly deploy -c worker/fly.toml -a glassspider` (from the repo root).
 - Keep at least one Fly machine running so the worker can poll `glassspider_jobs` and schedule crawl discovery.
 
 ## Scripts

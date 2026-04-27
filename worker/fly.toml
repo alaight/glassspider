@@ -1,6 +1,5 @@
-# Glassspider Python worker — Docker build context must be this directory (worker/), not the repo root.
-#   cd worker && fly deploy
-#   fly deploy worker --config worker/fly.toml   # from repo root
+# Glassspider Python worker — Docker build context is the repository root (run deploy from repo root).
+#   fly deploy -c worker/fly.toml -a glassspider
 
 app = "glassspider"
 primary_region = "ams"
