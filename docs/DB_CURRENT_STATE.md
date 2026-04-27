@@ -4,9 +4,18 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 
 ## Migration
 
+- Shared access bootstrap: `supabase/migrations/20260425235900_laightworks_project_access_bootstrap.sql`
+  - Creates `projects` as the shared product registry when missing.
+  - Creates `project_access` as the shared user-to-product access grant table when missing.
+  - Seeds the canonical `projects.slug = 'glassspider'` row used by product access checks.
 - Initial schema: `supabase/migrations/20260426000000_glassspider_bid_intelligence_initial_schema.sql`
 - Job queue schema: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`
-- The local Supabase CLI was not available when the migration was created. Validate the migration against the live shared schema before applying it, especially the assumed `projects(id, slug)` and `project_access(project_id, user_id, role)` columns.
+- The local Supabase CLI was not available when the migrations were created. Validate the migrations against the live shared schema before applying them.
+
+## Shared Ecosystem Tables
+
+- `projects`: shared product registry. Glassspider uses the `glassspider` slug to connect product data and RLS policies to the hub-level product record.
+- `project_access`: shared access grants linking Supabase users to project roles. Glassspider policies use roles `owner`, `admin`, `member`, `viewer`, `analyst`, and `reviewer`.
 
 ## Product Tables
 
