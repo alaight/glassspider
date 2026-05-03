@@ -4,8 +4,8 @@ Python execution plane for Glassspider crawl, scrape, and classify jobs.
 
 ## Responsibilities
 
-- Poll `glassspider_jobs` for due `pending` jobs.
-- Claim jobs atomically with `glassspider_claim_next_job(worker_id)`.
+- Poll `glassspider_jobs` for due `pending` jobs (interval: `GLASSSPIDER_WORKER_POLL_INTERVAL_SECONDS`, default 15).
+- Claim jobs atomically with `glassspider_claim_next_job(worker_id)`. When the queue is empty, the RPC yields no row; Supabase may return **`null`**, **`[]`**, **`{}`**, **`[null]`**, or a **dict with all-null fields**. The worker’s **`extract_job_row`** logic treats anything **without a truthy `id`** as **no job** (idle). Only then does it call **`Job.model_validate`**, so an empty queue does not raise validation errors.
 - Execute exactly one stage per job.
 - Write crawl/scrape/classify output into Supabase.
 - Record completion, failures, retry backoff, and last errors in the database.
@@ -48,3 +48,9 @@ fly deploy -c worker/fly.toml -a glassspider
 Docker build context is the **repo root**; `worker/Dockerfile` copies `worker/requirements.txt` and `worker/app`.
 
 Keep at least one machine running so polling and the internal scheduler continue.
+
+## Observed behaviour
+
+- **Started:** logs that the worker loop started with `worker_id` and poll interval.
+- **Idle:** `No pending jobs, sleeping N seconds` once per idle poll.
+- **Work:** logs claimed job `id`/`type`, completion, or failure (with traceback on handler errors or on malformed rows that pass the `id` check).

@@ -1,6 +1,6 @@
 # Current state — glassspider
 
-**Last updated:** 2026-04-26
+**Last updated:** 2026-05-03
 
 ## Repository
 
@@ -51,6 +51,13 @@ flowchart TD
 - Supabase is the system of record: source config, job queue, URL map, raw records, canonical records, classifications.
 - Python/Fly is the execution plane: atomic job claiming, crawl/scrape/classify execution, retries, backoff, and service-role writes.
 - The web app does not use `SUPABASE_SERVICE_ROLE_KEY`.
+
+## Worker runtime (Fly)
+
+- The worker is a **FastAPI** app started with **Uvicorn**; on startup it spawns background tasks for **`worker_loop`** (job polling) and **`scheduler_loop`** (due crawl enqueue). The HTTP server stays up even when the queue is empty.
+- **`glassspider_claim_next_job`** returns no row when nothing is claimable. Through PostgREST/Supabase this may appear as JSON **`null`**, an **empty list**, or a **dict whose fields are all null** (including **`id`**). The worker treats any payload **without a truthy `id`** as **idle**, waits **`GLASSSPIDER_WORKER_POLL_INTERVAL_SECONDS`** (default 15), and logs a single info line: `No pending jobs, sleeping N seconds`. It does **not** run `Job` validation on those idle shapes, so an empty queue does not produce Pydantic errors.
+- A row with a **real `id`** that still fails **`Job.model_validate`** is treated as a **bug or contract mismatch**; the worker logs a traceback for that case, then backs off and retries.
+- Exceptions inside **`worker_loop`** other than **`asyncio.CancelledError`** are logged with a traceback; the task **sleeps and continues** so polling does not permanently stop the process.
 
 ## Pipeline execution
 

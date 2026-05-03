@@ -41,5 +41,6 @@
 - Product access checks live in `lib/auth.ts` and must remain server-side.
 - Next.js is the Vercel control plane and must enqueue jobs only; do not run crawl/scrape/classify work in route handlers or server actions.
 - Python worker code lives in `worker/app/` and owns crawl/scrape/classify execution on Fly.io.
+- **`glassspider_claim_next_job` idle responses** may decode as null, empty collections, or an all-null job object. The worker only validates **`Job`** when **`row.get("id")`** is truthy; do not assume SQL `NULL` becomes Python `None` only.
 - `SUPABASE_SERVICE_ROLE_KEY` belongs only in the worker environment, never in Vercel or browser-exposed env vars.
 - Job execution state lives in `glassspider_jobs`; use atomic claim/complete/fail RPCs and preserve one active job per source/type.

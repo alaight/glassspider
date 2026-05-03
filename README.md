@@ -58,7 +58,7 @@ GLASSSPIDER_WORKER_SCHEDULER_INTERVAL_SECONDS=300
 - Deploy the Python worker to Fly.io with **`worker/fly.toml`** from the **repo root** (Docker build context is the repository root; see **`worker/README.md`**).
 - Copy `worker/fly.toml.example` to `worker/fly.toml`, set the app name/region, then set worker secrets with `fly secrets set`.
 - Deploy with: `fly deploy -c worker/fly.toml -a glassspider` (from the repo root).
-- Keep at least one Fly machine running so the worker can poll `glassspider_jobs` and schedule crawl discovery.
+- Keep at least one Fly machine running so the worker can poll `glassspider_jobs` and schedule crawl discovery. An empty queue is a normal idle state (poll + sleep); see **`docs/CURRENT_STATE.md`** (Worker runtime) and **`worker/README.md`**.
 
 ## Scripts
 

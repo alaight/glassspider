@@ -33,7 +33,7 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 ## Job Queue Consistency
 
 - `glassspider_jobs` enforces one active `pending` or `running` job per `(source_id, type)` with a partial unique index.
-- Workers claim jobs through `glassspider_claim_next_job(worker_id)` using `FOR UPDATE SKIP LOCKED`.
+- Workers claim jobs through `glassspider_claim_next_job(worker_id)` using `FOR UPDATE SKIP LOCKED`. When **no** row is updated, the function returns a **SQL null row** for the composite type. **PostgREST/Supabase clients may see** JSON **`null`**, a one-element list, or a **JSON object with all keys present but values null**. Integrations MUST treat **missing or null `id`** as “no job”; the Python worker implements this in `worker/app/jobs.py` (`extract_job_row`).
 - Worker ownership is tracked with `locked_by` and `locked_at`.
 - Jobs transition through controlled states: `pending -> running -> completed`, `pending -> running -> failed`, or `pending -> running -> pending` for retry backoff.
 - `attempt_count`, `max_attempts`, `last_error`, and `scheduled_at` store retry state in the database.
