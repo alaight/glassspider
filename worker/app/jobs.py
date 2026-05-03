@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from pydantic import ValidationError
 from supabase import Client
 
 from app.config import get_settings
@@ -12,6 +13,34 @@ from app.models import EnqueueRequest, Job
 logger = logging.getLogger(__name__)
 
 JobHandler = Callable[[Client, Job], Awaitable[dict[str, Any]]]
+
+
+def _coerce_claim_rpc_row(data: Any) -> dict[str, Any] | None:
+    """
+    Supabase/PostgREST may return RPC results as null, a single object, or a one-row list.
+    An empty queue can appear as None, [], or [null]; treat all as no row.
+    """
+    if data is None:
+        return None
+    if isinstance(data, list):
+        if len(data) == 0:
+            return None
+        row = data[0]
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            return row
+        logger.warning(
+            "glassspider_claim_next_job returned a list whose first element is not an object: %s",
+            type(row).__name__,
+        )
+        return None
+    if isinstance(data, dict):
+        return data
+    logger.warning(
+        "glassspider_claim_next_job returned unexpected type: %s", type(data).__name__
+    )
+    return None
 
 
 def enqueue_job(db: Client, request: EnqueueRequest) -> Job:
@@ -31,11 +60,17 @@ def enqueue_job(db: Client, request: EnqueueRequest) -> Job:
 
 def claim_next_job(db: Client, worker_id: str) -> Job | None:
     response = db.rpc("glassspider_claim_next_job", {"p_worker_id": worker_id}).execute()
-
-    if not response.data:
+    row = _coerce_claim_rpc_row(response.data)
+    if row is None:
         return None
-
-    return Job.model_validate(response.data)
+    try:
+        return Job.model_validate(row)
+    except ValidationError:
+        logger.exception(
+            "Invalid job row from glassspider_claim_next_job (worker_id=%s); treating as no job",
+            worker_id,
+        )
+        return None
 
 
 def complete_job(db: Client, job: Job, result: dict[str, Any]) -> None:
@@ -67,18 +102,18 @@ async def process_one_job(db: Client, handlers: dict[str, JobHandler]) -> bool:
     settings = get_settings()
     job = claim_next_job(db, settings.glassspider_worker_id)
 
-    if not job:
+    if job is None:
         return False
 
-    logger.info("Claimed job %s (%s)", job.id, job.type)
+    logger.info("Claimed job id=%s type=%s", job.id, job.type)
 
     try:
         handler = handlers[job.type]
         result = await handler(db, job)
         complete_job(db, job, result)
-        logger.info("Completed job %s", job.id)
+        logger.info("Job completed id=%s type=%s", job.id, job.type)
     except Exception as exc:
-        logger.exception("Failed job %s", job.id)
+        logger.exception("Job failed id=%s type=%s", job.id, job.type)
         fail_job(db, job, exc)
 
     return True
@@ -86,9 +121,28 @@ async def process_one_job(db: Client, handlers: dict[str, JobHandler]) -> bool:
 
 async def worker_loop(db: Client, handlers: dict[str, JobHandler]) -> None:
     settings = get_settings()
+    poll_s = settings.glassspider_worker_poll_interval_seconds
+    worker_id = settings.glassspider_worker_id
+
+    logger.info("Worker loop started worker_id=%s poll_interval_seconds=%s", worker_id, poll_s)
 
     while True:
-        processed = await process_one_job(db, handlers)
+        try:
+            processed = await process_one_job(db, handlers)
 
-        if not processed:
-            await asyncio.sleep(settings.glassspider_worker_poll_interval_seconds)
+            if not processed:
+                logger.info(
+                    "No pending jobs, sleeping %s seconds (worker_id=%s)",
+                    poll_s,
+                    worker_id,
+                )
+                await asyncio.sleep(poll_s)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "Worker loop error; sleeping %s seconds before retry (worker_id=%s)",
+                poll_s,
+                worker_id,
+            )
+            await asyncio.sleep(poll_s)
