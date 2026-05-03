@@ -28,7 +28,7 @@
 - **Additional API routes:** `GET /api/console/jobs`; `GET /api/console/records/[id]`; existing `POST /api/admin/runs`, `GET /api/dashboard/export`, `POST /api/cron/run-scheduled` unchanged in role.
 - **Server actions:** `app/actions/console.ts` (enqueue, sources/rules, retries, batch scrape helpers); **`app/admin/actions.ts`** re-exports for compatibility.
 - Auth: **`lib/auth.ts`** + shared **`projects` / `project_access`** with **`PROJECT_SLUG = glassspider`**. Admin UI gated by **`GLASSSPIDER_ADMIN_ROLES`** (default `owner,admin`).
-- Middleware (`middleware.ts` → **`proxy.ts`**) refreshes Supabase SSR cookies on **`/`** + console/API matchers. Optional **`SUPABASE_AUTH_COOKIE_DOMAIN=laightworks.com`** aligns `Set-Cookie` domain with the hub so apex sign-in survives on **`*.laightworks.com`** — the hub app must apply the **same** `cookieOptions.domain`.
+- **`proxy.ts`** (Next.js 16+) refreshes Supabase SSR cookies on matched navigations (static assets excluded via matcher). Optional **`SUPABASE_AUTH_COOKIE_DOMAIN=laightworks.com`** aligns `Set-Cookie` domain with the hub so apex sign-in survives on **`*.laightworks.com`** — the hub app must apply the **same** `cookieOptions.domain`.
 
 ## Architecture
 
