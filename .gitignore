@@ -20,6 +20,8 @@ Thumbs.db
 *.log
 .cache/
 .pycache/
+__pycache__/
+*.pyc
 .next/
 node_modules/
 tsconfig.tsbuildinfo

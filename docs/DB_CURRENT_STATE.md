@@ -43,9 +43,10 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 
 - RLS is enabled on all `glassspider_*` tables.
 - Viewer roles can read product data after matching access in the shared project access tables.
-- Admin roles can manage source configuration.
-- Pipeline writes are expected to run only from the Fly worker with the Supabase service role key.
-- The Next.js/Vercel app uses authenticated Supabase context and only enqueues jobs or reads status.
+- Admin roles can manage source configuration (`glassspider_sources`, `glassspider_source_rules`, etc.) as allowed by migration policies — not every table exposes `UPDATE`/`INSERT` to admins.
+- **`glassspider_discovered_urls`:** the bundled initial migration includes **read (`SELECT`)** access for authenticated Glassspider viewers. There is **no end-user `UPDATE` policy** there today. The Next.js console may expose “tag URL” intents, but **persisted status/type changes from the browser need a deliberate policy or RPC migration** before they succeed without the worker’s service-role client.
+- Canonical pipeline mutations (worker crawl upserts, scrape writes into `glassspider_raw_records` / `glassspider_bid_records`, classifications) use the Fly worker’s **service role**.
+- The web app relies on SSR Supabase contexts, honours RLS on reads/config mutations that are permitted, enqueues jobs through **`glassspider_enqueue_job`**, and never loads `SUPABASE_SERVICE_ROLE_KEY` in Vercel.
 - Service role keys must never be exposed to browser code or `NEXT_PUBLIC_*` variables.
 
 ## Idempotency
@@ -56,4 +57,4 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 
 ## Search
 
-The MVP uses Postgres filtering and a generated `search_vector` on `glassspider_bid_records`. Elasticsearch/OpenSearch is intentionally deferred until the dataset or fuzzy-search requirements justify another service.
+The **`search_vector`** column on **`glassspider_bid_records`** backs keyword mode in the **`/data`** console (Supabase **`textSearch`** with **`websearch`**). Other filters use column predicates. Elasticsearch/OpenSearch is intentionally deferred until the dataset or fuzzy-search requirements justify another service.

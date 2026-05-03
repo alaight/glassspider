@@ -37,6 +37,10 @@
 ## Runtime notes
 
 - Next.js App Router routes under `app/`.
+- **Operator console:** route group `app/(console)/` serves `/explore`, `/sources`, `/url-map`, `/runs`, `/data`; record drill-down at `/records/[id]`. Shell: sidebar + inspector rail under `components/console/`. Legacy `/admin/*` and `/dashboard/*` URLs redirect here; `/` is a role-based redirect (not a marketing page).
+- Server actions for configuration and jobs live in **`app/actions/console.ts`** (re-exported from `app/admin/actions.ts`).
+- **API routes:** admin polling `GET /api/console/jobs`; workspace JSON `GET /api/console/records/[id]`; Explore **POST `/api/explore/fetch`** (admin-only, bounded fetch + HTML sanitisation — not a replacement for worker crawls).
+- **`proxy.ts`** (Next middleware proxy) matcher includes the console paths and related APIs so Supabase auth cookies refresh consistently on those navigations.
 - Server Supabase helpers live in `lib/supabase/server.ts`.
 - Product access checks live in `lib/auth.ts` and must remain server-side.
 - Next.js is the Vercel control plane and must enqueue jobs only; do not run crawl/scrape/classify work in route handlers or server actions.

@@ -15,24 +15,19 @@
 ## Application
 
 - Stack: Next.js App Router, TypeScript, Tailwind CSS, Supabase SSR.
-- Root page `/` explains the Glassspider workflow and links to protected admin/viewer areas.
-- Protected admin routes:
-  - `/admin`: source/run overview.
-  - `/admin/sources`: source registry and BidStats seed action.
-  - `/admin/sources/[id]`: source URL rules.
-  - `/admin/runs`: job queue controls, job status, retry actions, and run telemetry.
-  - `/admin/url-map`: discovered URL map with explicit scrape job actions.
-- Protected viewer routes:
-  - `/dashboard`: bid intelligence overview.
-  - `/dashboard/search`: searchable bid records and CSV export link.
-  - `/dashboard/renewals`: renewal buckets.
-  - `/dashboard/records/[id]`: canonical record detail.
-- API routes:
-  - `POST /api/admin/runs`: admin-triggered job enqueue only.
-  - `GET /api/dashboard/export`: viewer CSV export.
-  - `POST /api/cron/run-scheduled`: disabled for scraping execution; scheduling belongs to the Fly worker.
-- Server-side auth checks validate the Supabase user and shared Laightworks project access for `PROJECT_SLUG = glassspider`.
-- Admin roles default to `owner,admin`; viewer roles include owner/admin/member/viewer/analyst/reviewer.
+- **Primary UI:** single **console shell** (`app/(console)/`): sidebar + main + inspector rail. Copy is intentionally operational (records/items), not a landing site.
+- **Routes (canonical):**
+  - **`/explore`** (admin): ad-hoc URL fetch + anchors + iframe preview (`POST /api/explore/fetch`); deep-links into Sources with draft/suggested-rule query params.
+  - **`/sources`**, **`/sources/[id]`** (admin): registry, crawler rules, BidStats seed.
+  - **`/url-map`** (admin): filtered/paged **`glassspider_discovered_urls`**, selection, batch scrape enqueue, optional row tagging (**UPDATE** may be blocked by RLS — see **`docs/DB_CURRENT_STATE.md`**).
+  - **`/runs`** (admin): enqueue jobs; **`GET /api/console/jobs`** polling (~5 s); expandable payload/result; retry failed jobs.
+  - **`/data`** (viewer+): filtered record explorer; keyword mode uses FTS on **`glassspider_bid_records.search_vector`**; inspector uses **`GET /api/console/records/[id]`** (canonical + raw + classifications).
+  - **`/records/[id]`** (viewer+): full-page drill-down JSON + raw + classifier rows.
+- **`/`:** role redirect (admins → `/explore`, others → `/data`); sign-in redirects at root when unauthenticated.
+- **Legacy:** `/admin/*` and **`/dashboard/*`** redirect into the canonical paths (bookmarks preserved).
+- **Additional API routes:** `GET /api/console/jobs`; `GET /api/console/records/[id]`; existing `POST /api/admin/runs`, `GET /api/dashboard/export`, `POST /api/cron/run-scheduled` unchanged in role.
+- **Server actions:** `app/actions/console.ts` (enqueue, sources/rules, retries, batch scrape helpers); **`app/admin/actions.ts`** re-exports for compatibility.
+- Auth: **`lib/auth.ts`** + shared **`projects` / `project_access`** with **`PROJECT_SLUG = glassspider`**. Admin UI gated by **`GLASSSPIDER_ADMIN_ROLES`** (default `owner,admin`).
 
 ## Architecture
 
@@ -47,7 +42,7 @@ flowchart TD
   worker --> sourceSites[Procurement Sources]
 ```
 
-- Next.js/Vercel is the control plane: auth, source configuration, job enqueueing, dashboards, exports.
+- Next.js/Vercel is the control plane: auth, source/rule configuration, job enqueueing, **operator console** (Explore / Sources / URL map / Runs), **data explorer**, exports, and bounded Explore fetch endpoint.
 - Supabase is the system of record: source config, job queue, URL map, raw records, canonical records, classifications.
 - Python/Fly is the execution plane: atomic job claiming, crawl/scrape/classify execution, retries, backoff, and service-role writes.
 - The web app does not use `SUPABASE_SERVICE_ROLE_KEY`.

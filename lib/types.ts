@@ -76,13 +76,16 @@ export type DiscoveredUrl = {
   last_seen_at: string;
   last_crawled_at: string | null;
   matched_rule: string | null;
+  error_message?: string | null;
 };
 
 export type BidRecord = {
   id: string;
   source_id: string | null;
+  raw_record_id: string | null;
   source_url: string;
   title: string;
+  description: string | null;
   buyer_name: string | null;
   supplier_name: string | null;
   sector_primary: string | null;
@@ -96,4 +99,43 @@ export type BidRecord = {
   estimated_renewal_date: string | null;
   relevance_score: number | null;
   review_status: ReviewStatus;
+  ai_summary: string | null;
+  created_at?: string;
+};
+
+/** Normalised scraped row (semantic alias — not only procurement). */
+export type CanonicalRecord = BidRecord;
+
+export type RawRecord = {
+  id: string;
+  source_id: string | null;
+  discovered_url_id: string | null;
+  run_id: string | null;
+  source_url: string;
+  external_reference: string | null;
+  raw_title: string | null;
+  raw_text: string;
+  raw_metadata: Record<string, unknown>;
+  extraction_status: ReviewStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Classification = {
+  id: string;
+  bid_record_id: string | null;
+  raw_record_id: string | null;
+  classifier: string;
+  prompt_version: string | null;
+  labels: string[];
+  confidence: number | null;
+  output: Record<string, unknown>;
+  review_status: ReviewStatus;
+  created_at: string;
+};
+
+export type RecordWorkspace = {
+  record: BidRecord;
+  raw: RawRecord | null;
+  classifications: Classification[];
 };

@@ -4,13 +4,13 @@ Laightworks ecosystem product — [glassspider](https://github.com/alaight/glass
 
 ## Application
 
-Glassspider is a distributed bid intelligence pipeline with a Next.js control plane:
+Glassspider is an operational crawl/extract/classify pipeline with a Next.js **control-plane console** (not a marketing site):
 
-- Admin users configure procurement sources, URL rules, manual runs, and URL-map review.
-- Viewer users search normalised bid records, inspect renewal windows, and export CSV data.
-- Supabase stores product data and the `glassspider_jobs` queue.
-- A Python worker on Fly.io owns crawl/scrape/classify execution with the service-role key.
-- The first source investigation targets BidStats with cautious, low-rate, query-free crawling based on its public robots rules.
+- **Operators (admin roles)** explore arbitrary URLs safely, configure sources/rules, inspect the discovered URL map, queue jobs, and watch job/run telemetry.
+- **All granted product users** can browse normalised **`glassspider_bid_records`**, filter (including full‑text keyword search), inspect raw capture and classifications where present, and export CSV.
+- Supabase holds configuration, the URL map, raw/canonical rows, classifications, and **`glassspider_jobs`**.
+- A Python worker on Fly.io owns crawl/scrape/classify execution using the **service-role** key.
+- Canonical routes: **`/explore`** · **`/sources`** (+ `/sources/[id]`) · **`/url-map`** · **`/runs`** · **`/data`** · **`/records/[id]`**. **`/`** sends admins to `/explore`, others to `/data`. **`/admin/*`** and **`/dashboard/*`** redirect to these paths.
 
 ## Database
 

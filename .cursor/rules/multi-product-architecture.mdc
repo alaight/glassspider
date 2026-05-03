@@ -47,5 +47,5 @@ alwaysApply: true
 
 - Do not put major glassspider-only business logic into the hub/dashboard app; keep it in this repo.
 - This app must remain independently deployable.
-- Keep `/admin` for Laightworks owner operations and `/dashboard` for user-facing product launch (when applicable).
+- **Differentiate hubs vs this app:** the **Laightworks** hub has its own `/admin` and `/dashboard` routes on `laightworks.com`. In **this repo’s Next.js app**, `/admin/*` and `/dashboard/*` are **compat redirects** to the glassspider operator console (`/sources`, `/data`, `/runs`, …); canonical navigation uses `/explore`, `/sources`, `/url-map`, `/runs`, `/data`, `/records/...`.
 - When routes, auth, schema, or cross-product behavior changes, update `docs/CURRENT_STATE.md` and any existing ecosystem docs this repo maintains.
