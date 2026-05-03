@@ -35,20 +35,10 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/",
-    "/admin/:path*",
-    "/dashboard/:path*",
-    "/explore",
-    "/sources",
-    "/sources/:path*",
-    "/url-map",
-    "/runs",
-    "/data",
-    "/records",
-    "/records/:path*",
-    "/api/admin/:path*",
-    "/api/explore/:path*",
-    "/api/console/:path*",
-    "/api/dashboard/:path*",
+    /*
+     * Match all paths except Next internals and typical static assets.
+     * Ensures Supabase refreshes SSR cookies on every product route.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
