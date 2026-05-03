@@ -15,32 +15,30 @@ logger = logging.getLogger(__name__)
 JobHandler = Callable[[Client, Job], Awaitable[dict[str, Any]]]
 
 
-def _coerce_claim_rpc_row(data: Any) -> dict[str, Any] | None:
+def extract_job_row(data: Any) -> dict[str, Any] | None:
     """
-    Supabase/PostgREST may return RPC results as null, a single object, or a one-row list.
-    An empty queue can appear as None, [], or [null]; treat all as no row.
+    Normalize glassspider_claim_next_job RPC payloads.
+
+    Postgres returns a null row as JSON null or as an object with all-null fields;
+    PostgREST may wrap that in a list.
     """
     if data is None:
         return None
+    if data == [] or data == {}:
+        return None
     if isinstance(data, list):
-        if len(data) == 0:
+        if not data:
             return None
         row = data[0]
-        if row is None:
-            return None
-        if isinstance(row, dict):
-            return row
-        logger.warning(
-            "glassspider_claim_next_job returned a list whose first element is not an object: %s",
-            type(row).__name__,
-        )
+    else:
+        row = data
+    if row is None:
         return None
-    if isinstance(data, dict):
-        return data
-    logger.warning(
-        "glassspider_claim_next_job returned unexpected type: %s", type(data).__name__
-    )
-    return None
+    if not isinstance(row, dict):
+        raise TypeError(f"Unexpected job claim response type: {type(row)}")
+    if not row.get("id"):
+        return None
+    return row
 
 
 def enqueue_job(db: Client, request: EnqueueRequest) -> Job:
@@ -60,17 +58,18 @@ def enqueue_job(db: Client, request: EnqueueRequest) -> Job:
 
 def claim_next_job(db: Client, worker_id: str) -> Job | None:
     response = db.rpc("glassspider_claim_next_job", {"p_worker_id": worker_id}).execute()
-    row = _coerce_claim_rpc_row(response.data)
+    row = extract_job_row(response.data)
     if row is None:
         return None
     try:
         return Job.model_validate(row)
     except ValidationError:
         logger.exception(
-            "Invalid job row from glassspider_claim_next_job (worker_id=%s); treating as no job",
+            "Invalid job row from glassspider_claim_next_job (worker_id=%s job_id=%s)",
             worker_id,
+            row.get("id"),
         )
-        return None
+        raise
 
 
 def complete_job(db: Client, job: Job, result: dict[str, Any]) -> None:
@@ -131,14 +130,13 @@ async def worker_loop(db: Client, handlers: dict[str, JobHandler]) -> None:
             processed = await process_one_job(db, handlers)
 
             if not processed:
-                logger.info(
-                    "No pending jobs, sleeping %s seconds (worker_id=%s)",
-                    poll_s,
-                    worker_id,
-                )
+                logger.info("No pending jobs, sleeping %s seconds", poll_s)
                 await asyncio.sleep(poll_s)
         except asyncio.CancelledError:
             raise
+        except ValidationError:
+            # claim_next_job already logged; backoff without duplicate traceback
+            await asyncio.sleep(poll_s)
         except Exception:
             logger.exception(
                 "Worker loop error; sleeping %s seconds before retry (worker_id=%s)",
