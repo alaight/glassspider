@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { enqueueScrapeForSelection, updateDiscoveredUrls } from "@/app/actions/console";
+import { isLikelyUrlMapRlsError } from "@/lib/url-map-feedback";
 import { ButtonGroup, ConsoleButton } from "@/components/ui/button-group";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { Panel } from "@/components/ui/panel";
@@ -27,7 +28,12 @@ type UrlMapClientProps = {
 export function UrlMapClient({ sources, rows, total, limit, offset, filters }: UrlMapClientProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<
+    | { kind: "success"; text: string }
+    | { kind: "error"; text: string }
+    | { kind: "rls"; text: string }
+    | null
+  >(null);
   const [pending, startTransition] = useTransition();
 
   const rowById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
@@ -129,13 +135,14 @@ export function UrlMapClient({ sources, rows, total, limit, offset, filters }: U
   ];
 
   const runBatch = (action: () => Promise<void>) => {
-    setMessage(null);
+    setFeedback(null);
     startTransition(async () => {
       try {
         await action();
         router.refresh();
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Action failed.");
+        const text = error instanceof Error ? error.message : "Action failed.";
+        setFeedback(isLikelyUrlMapRlsError(text) ? { kind: "rls", text } : { kind: "error", text });
       }
     });
   };
@@ -159,12 +166,13 @@ export function UrlMapClient({ sources, rows, total, limit, offset, filters }: U
                     throw new Error(res.error);
                   }
 
-                  setMessage(`Queued ${res.jobsQueued ?? 0} scrape job(s).`);
+                  const n = res.jobsQueued ?? 0;
+                  setFeedback({ kind: "success", text: n <= 1 ? `Queued ${n} extract job.` : `Queued ${n} extract batches (multiple sources split into separate jobs).` });
                   setSelected(new Set());
                 })
               }
             >
-              Scrape selected
+              Extract selected
             </ConsoleButton>
             <ConsoleButton
               variant="secondary"
@@ -178,7 +186,8 @@ export function UrlMapClient({ sources, rows, total, limit, offset, filters }: U
                     throw new Error(res.error);
                   }
 
-                  setMessage("Marked as detail (if policy allows).");
+                  const n = selected.size;
+                  setFeedback({ kind: "success", text: `Tagged ${n} URL(s) as detail in the URL map.` });
                 })
               }
             >
@@ -196,7 +205,8 @@ export function UrlMapClient({ sources, rows, total, limit, offset, filters }: U
                     throw new Error(res.error);
                   }
 
-                  setMessage("Marked as ignored (if policy allows).");
+                  const n = selected.size;
+                  setFeedback({ kind: "success", text: `Marked ${n} URL(s) as ignored.` });
                 })
               }
             >
@@ -255,10 +265,32 @@ export function UrlMapClient({ sources, rows, total, limit, offset, filters }: U
             Apply
           </ConsoleButton>
         </form>
-        {message ? <p className="mt-3 text-xs text-slate-700">{message}</p> : null}
-        <p className="mt-2 text-[11px] text-[var(--muted)]">
-          Select rows to queue scrapes or tag types. If updates fail, your session may be read-only on this table (RLS).
-        </p>
+        {feedback?.kind === "success" ? <p className="mt-3 text-xs font-medium text-emerald-900">{feedback.text}</p> : null}
+        {feedback?.kind === "error" ? <p className="mt-3 text-xs font-medium text-red-800">{feedback.text}</p> : null}
+        {feedback?.kind === "rls" ? (
+          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+            <p className="font-semibold">Database policy blocked URL row edits</p>
+            <p className="mt-1 leading-relaxed">
+              Postgres returned: <span className="break-words font-mono text-[11px]">{feedback.text}</span>
+            </p>
+            <p className="mt-2 leading-relaxed">
+              In the shipped migrations, authenticated users can usually <strong>read</strong> <code className="rounded bg-white px-0.5">glassspider_discovered_urls</code>{" "}
+              but not update it without an extra GRANT/policy. Workers using the service role still enqueue extract jobs—which is enough to progress the crawl pipeline.
+              To persist tagging from the UI, add an admin UPDATE policy (see <strong>docs/DB_CURRENT_STATE.md</strong> Access model).
+            </p>
+          </div>
+        ) : null}
+        <details className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+          <summary className="cursor-pointer select-none font-medium text-slate-800">Tagging URLs vs enqueueing extracts</summary>
+          <ul className="mt-2 list-inside list-disc space-y-1 leading-relaxed">
+            <li>
+              <strong>Extract selected</strong> queues Fly extract jobs—they do not require manually editing URL rows in Postgres (works alongside read-only URL maps).
+            </li>
+            <li>
+              <strong>Mark as detail / ignore</strong> issues direct updates; success requires database policies granting UPDATE to operators.
+            </li>
+          </ul>
+        </details>
       </Panel>
 
       <DataTable
@@ -268,7 +300,11 @@ export function UrlMapClient({ sources, rows, total, limit, offset, filters }: U
         selectionKey={(row) => row.id}
         selectedIds={selected}
         onToggleRow={(id, value) => toggleRow(id, value)}
-        emptyLabel="No URLs matched these filters yet. Run a crawl from Runs."
+        emptyLabel={
+          <>
+            Nothing matches these filters. Run a <Link href="/runs" className="text-[var(--accent)] underline">crawl job from Runs</Link>, then widen filters or pagination.
+          </>
+        }
       />
 
       <div className="flex items-center justify-between text-xs">

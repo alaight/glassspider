@@ -111,8 +111,8 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="Explore records"
-        eyebrow={`${total ?? "?"} indexed`}
+        title="Extracted records"
+        eyebrow={`${total ?? "?"} rows · keyword uses full‑text`}
         actions={
           <Link className="rounded border border-[var(--panel-border)] bg-white px-3 py-1 text-[11px] font-semibold" href="/api/dashboard/export">
             Export CSV

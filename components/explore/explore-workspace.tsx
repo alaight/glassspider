@@ -30,6 +30,7 @@ export function ExploreWorkspace() {
 
   const handleFetch = useCallback(() => {
     setError(null);
+    setResult(null);
     startTransition(async () => {
       try {
         const response = await fetch("/api/explore/fetch", {

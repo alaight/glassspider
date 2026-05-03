@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { retryFailedJob } from "@/app/actions/console";
@@ -16,6 +17,7 @@ type Snapshot = {
 };
 
 export function RunsJobsMonitor({ initialJobs, initialRuns }: { initialJobs: PipelineJob[]; initialRuns: PipelineRun[] }) {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState<Snapshot>({ jobs: initialJobs, runs: initialRuns });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [, startRefresh] = useTransition();
@@ -120,6 +122,7 @@ export function RunsJobsMonitor({ initialJobs, initialRuns }: { initialJobs: Pip
                             startRetry(async () => {
                               try {
                                 await retryFailedJob(job.id);
+                                router.refresh();
                               } catch (error) {
                                 window.alert(error instanceof Error ? error.message : "Retry failed.");
                               }

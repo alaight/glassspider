@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
+import { getSupabaseSsrExtraOptions } from "@/lib/supabase/cookie-options";
+
 export type SupabaseServerClient = ReturnType<typeof createServerClient>;
 
 export function getSupabaseBrowserConfig() {
@@ -24,6 +26,7 @@ export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
   return createServerClient(config.url, config.publishableKey, {
+    ...getSupabaseSsrExtraOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -11,7 +11,7 @@ type DataTableProps<T> = {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
-  emptyLabel?: string;
+  emptyLabel?: ReactNode;
   selectedIds?: ReadonlySet<string>;
   selectionKey?: (row: T) => string | null | undefined;
   onToggleRow?: (id: string, selected: boolean) => void;

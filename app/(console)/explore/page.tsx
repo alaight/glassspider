@@ -18,8 +18,8 @@ export default async function ExplorePage() {
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title="Explorer" eyebrow="Ad-hoc">
-        Fetch arbitrary HTTPS pages inside a sandbox, enumerate anchors, harvest patterns without touching your Supabase crawl budget.
+      <Panel title="Explorer" eyebrow="Reconnaissance">
+        One-off HTTPS fetch to preview HTML, enumerate links, and export draft source/rule hints. Separate from crawler quota and Postgres URL map mutations.
       </Panel>
       <ExploreWorkspace />
     </div>
