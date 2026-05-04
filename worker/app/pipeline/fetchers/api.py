@@ -40,7 +40,7 @@ async def fetch_api(*, client: httpx.AsyncClient, url: str, api_config: dict[str
         json_data=json_data,
         discovered_requests=[],
         metadata={
-            "fetch_mode": "api",
+            "fetch_mode": "declared_api",
             "endpoint": endpoint,
             "method": method,
             "duration_ms": int((time.perf_counter() - started) * 1000),

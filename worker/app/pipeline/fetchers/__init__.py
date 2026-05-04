@@ -14,14 +14,23 @@ from app.pipeline.fetchers.types import FetchMode, FetchResult
 def normalise_fetch_mode(value: Any) -> FetchMode:
     if isinstance(value, str):
         lowered = value.strip().lower()
-        if lowered in {"static", "rendered", "api"}:
-            return lowered
-    return "static"
+        alias = {
+            "static": "static_html",
+            "static_html": "static_html",
+            "rendered": "rendered_html",
+            "rendered_html": "rendered_html",
+            "api": "declared_api",
+            "declared_api": "declared_api",
+            "discovered_api": "discovered_api",
+        }.get(lowered)
+        if alias:
+            return alias
+    return "static_html"
 
 
 def resolve_fetch_mode(source: dict[str, Any], job_payload: dict[str, Any] | None = None) -> FetchMode:
     payload = job_payload or {}
-    return normalise_fetch_mode(payload.get("fetch_mode") or source.get("fetch_mode") or "static")
+    return normalise_fetch_mode(payload.get("fetch_mode") or source.get("fetch_mode") or "static_html")
 
 
 def resolve_fetch_config(source: dict[str, Any], job_payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -51,14 +60,16 @@ async def fetch_with_mode(
 ) -> FetchResult:
     config = source_config or {}
 
-    if mode == "rendered":
+    if mode in {"rendered_html", "discovered_api"}:
         rendered_cfg = config.get("rendered")
         if not isinstance(rendered_cfg, dict):
             rendered_cfg = {}
         return await fetch_rendered(url=url, rendered_config=rendered_cfg, user_agent=user_agent)
 
-    if mode == "api":
-        api_cfg = config.get("api")
+    if mode == "declared_api":
+        api_cfg = config.get("declared_api")
+        if not isinstance(api_cfg, dict):
+            api_cfg = config.get("api")
         if not isinstance(api_cfg, dict):
             api_cfg = {}
         return await fetch_api(client=client, url=url, api_config=api_cfg)

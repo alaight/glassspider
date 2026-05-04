@@ -4,7 +4,7 @@ export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancell
 export type ReviewStatus = "pending" | "approved" | "rejected" | "needs_review";
 export type JobType = "crawl" | "scrape" | "classify";
 export type JobStatus = "pending" | "running" | "completed" | "failed";
-export type FetchMode = "static" | "rendered" | "api";
+export type FetchMode = "static_html" | "rendered_html" | "discovered_api" | "declared_api";
 
 export type RenderedInteractionStep =
   | { type: "click"; selector: string }
@@ -22,6 +22,20 @@ export type SourceFetchConfig = {
     timeout_ms?: number;
     steps?: RenderedInteractionStep[];
     request_capture_limit?: number;
+  };
+  discovered_api?: {
+    endpoint_url?: string | null;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    request_post_data?: unknown;
+  };
+  declared_api?: {
+    endpoint?: string | null;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    headers?: Record<string, string>;
+    payload?: unknown;
+    record_selector?: string;
+    field_mapping?: Record<string, string>;
+    url_fields?: Record<string, { base_url?: string }>;
   };
   api?: {
     endpoint?: string | null;

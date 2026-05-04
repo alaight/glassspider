@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 
 type ExploreResponse = {
   ok?: boolean;
-  mode: "static" | "rendered" | "api";
+  mode: "static_html" | "rendered_html" | "discovered_api" | "declared_api";
   requestedUrl: string;
   resolvedUrl: string;
   statusCode: number;
@@ -28,6 +28,7 @@ type ExploreResponse = {
     contentType?: string | null;
     detectedRequests?: Array<Record<string, unknown>>;
     jsonEndpoints?: Array<Record<string, unknown>>;
+    endpointCandidates?: Array<Record<string, unknown>>;
     metadata?: Record<string, unknown>;
     renderedTextPreview?: string;
     renderedHtmlLength?: number;
@@ -44,7 +45,7 @@ type ExploreResponse = {
 export function ExploreWorkspace() {
   const router = useRouter();
   const [url, setUrl] = useState("https://");
-  const [mode, setMode] = useState<"static" | "rendered" | "api">("static");
+  const [mode, setMode] = useState<"static_html" | "rendered_html" | "discovered_api" | "declared_api">("static_html");
   const defaultRenderedPreset = `{
   "steps": [
     {
@@ -115,9 +116,44 @@ export function ExploreWorkspace() {
   }, [mode, sourceConfigJson, url]);
 
   const applyBayerPreset = useCallback(() => {
-    setMode("rendered");
+    setMode("rendered_html");
     setSourceConfigJson(defaultRenderedPreset);
   }, [defaultRenderedPreset]);
+
+  const saveCandidateAsDeclaredApi = useCallback(
+    (candidate: Record<string, unknown>) => {
+      const endpoint = String(candidate.endpoint_url ?? "");
+      const method = String(candidate.method ?? "GET").toUpperCase();
+      const suggestedMappingRaw = candidate.suggested_mapping;
+      const suggestedMapping =
+        suggestedMappingRaw && typeof suggestedMappingRaw === "object" && !Array.isArray(suggestedMappingRaw)
+          ? (suggestedMappingRaw as Record<string, unknown>)
+          : {};
+      const prefillConfig = {
+        declared_api: {
+          endpoint,
+          method,
+          record_selector: String(suggestedMapping.record_selector ?? "$[*]"),
+          field_mapping:
+            suggestedMapping.fields && typeof suggestedMapping.fields === "object" && !Array.isArray(suggestedMapping.fields)
+              ? suggestedMapping.fields
+              : {},
+          url_fields:
+            suggestedMapping.url_fields && typeof suggestedMapping.url_fields === "object" && !Array.isArray(suggestedMapping.url_fields)
+              ? suggestedMapping.url_fields
+              : {},
+        },
+      };
+
+      const params = new URLSearchParams({
+        prefillUrl: result?.resolvedUrl ?? url,
+        prefillFetchMode: "declared_api",
+        prefillFetchConfig: JSON.stringify(prefillConfig, null, 2),
+      });
+      router.push(`/sources?${params.toString()}`);
+    },
+    [result?.resolvedUrl, router, url],
+  );
 
   function suggestPattern(kind: "listing" | "detail") {
     if (!result?.resolvedUrl) {
@@ -192,12 +228,13 @@ export function ExploreWorkspace() {
             Fetch mode
             <select
               value={mode}
-              onChange={(event) => setMode(event.target.value as "static" | "rendered" | "api")}
+              onChange={(event) => setMode(event.target.value as "static_html" | "rendered_html" | "discovered_api" | "declared_api")}
               className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-3 py-2 text-sm"
             >
-              <option value="static">static</option>
-              <option value="rendered">rendered (Playwright)</option>
-              <option value="api">api (direct endpoint)</option>
+              <option value="static_html">static_html</option>
+              <option value="rendered_html">rendered_html (Playwright)</option>
+              <option value="discovered_api">discovered_api (capture likely JSON endpoints)</option>
+              <option value="declared_api">declared_api (configured API endpoint)</option>
             </select>
           </label>
           <label className="w-full text-xs font-medium">
@@ -299,9 +336,13 @@ export function ExploreWorkspace() {
         <Panel title="Diagnostics" eyebrow="Worker + rendered telemetry">
           <div className="space-y-3 text-xs">
             <p className="text-[var(--muted)]">
-              Worker status: {result.diagnostics?.workerConnectionStatus ?? (result.mode === "static" ? "n/a" : "unknown")} · Content type:{" "}
+              Worker status: {result.diagnostics?.workerConnectionStatus ?? (result.mode === "static_html" ? "n/a" : "unknown")} · Content type:{" "}
               {result.diagnostics?.contentType ?? "n/a"} · Requests captured: {result.diagnostics?.detectedRequests?.length ?? 0} · JSON endpoint candidates:{" "}
-              {result.diagnostics?.jsonEndpoints?.length ?? 0} · Rendered HTML bytes: {result.diagnostics?.renderedHtmlLength ?? 0}
+              {(result.diagnostics?.endpointCandidates?.length ?? result.diagnostics?.jsonEndpoints?.length) ?? 0} · Rendered HTML bytes:{" "}
+              {result.diagnostics?.renderedHtmlLength ?? 0}
+            </p>
+            <p className="text-[10px] text-[var(--muted)]">
+              Guardrails: only use public, unauthenticated endpoints; do not bypass login, paywalls, or anti-bot controls.
             </p>
             {result.diagnostics?.workerEndpoint ? (
               <p className="text-[var(--muted)]">
@@ -336,12 +377,44 @@ export function ExploreWorkspace() {
                 </pre>
               </div>
             ) : null}
-            {result.diagnostics?.jsonEndpoints?.length ? (
+            {(result.diagnostics?.endpointCandidates ?? result.diagnostics?.jsonEndpoints)?.length ? (
               <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
                 <p className="mb-1 font-semibold text-slate-800">JSON endpoint candidates</p>
-                <pre className="max-h-52 overflow-auto text-[10px] text-slate-700">
-                  {JSON.stringify(result.diagnostics.jsonEndpoints.slice(0, 12), null, 2)}
-                </pre>
+                <div className="space-y-2">
+                  {(result.diagnostics?.endpointCandidates ?? result.diagnostics?.jsonEndpoints ?? []).slice(0, 8).map((candidate, index) => {
+                    const endpointUrl = String(candidate.endpoint_url ?? candidate.url ?? "");
+                    const confidence = String(candidate.confidence ?? "unknown");
+                    const score = candidate.confidence_score;
+                    const profile = candidate.structure_profile;
+                    const mapping = candidate.suggested_mapping;
+                    return (
+                      <div key={`${endpointUrl}-${index}`} className="rounded border border-slate-200 bg-white p-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="break-all font-mono text-[10px] text-slate-800">{endpointUrl}</p>
+                          <span className="text-[10px] uppercase text-[var(--muted)]">
+                            {confidence}
+                            {typeof score === "number" ? ` (${score})` : ""}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-[var(--muted)]">
+                          Method {String(candidate.method ?? "GET")} · HTTP {String(candidate.status ?? "n/a")} · Guess{" "}
+                          {String(candidate.record_count_guess ?? "n/a")} records
+                        </p>
+                        {profile ? (
+                          <pre className="mt-1 max-h-32 overflow-auto text-[10px] text-slate-700">{JSON.stringify(profile, null, 2)}</pre>
+                        ) : null}
+                        {mapping ? (
+                          <pre className="mt-1 max-h-32 overflow-auto text-[10px] text-slate-700">{JSON.stringify(mapping, null, 2)}</pre>
+                        ) : null}
+                        <div className="mt-2">
+                          <ConsoleButton variant="secondary" type="button" onClick={() => saveCandidateAsDeclaredApi(candidate)}>
+                            Save as declared API source draft
+                          </ConsoleButton>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : null}
             {result.diagnostics?.detectedRequests?.length ? (

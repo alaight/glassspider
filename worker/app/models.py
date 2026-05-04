@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 JobType = Literal["crawl", "scrape", "classify"]
 JobStatus = Literal["pending", "running", "completed", "failed"]
-FetchMode = Literal["static", "rendered", "api"]
+FetchMode = Literal["static_html", "rendered_html", "discovered_api", "declared_api"]
 
 
 class Job(BaseModel):
@@ -35,7 +35,7 @@ class EnqueueRequest(BaseModel):
 
 class DebugFetchRequest(BaseModel):
     url: str
-    mode: FetchMode = "static"
+    mode: FetchMode = "static_html"
     source_config: dict[str, Any] = Field(default_factory=dict)
 
 

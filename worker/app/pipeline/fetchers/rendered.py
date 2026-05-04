@@ -271,7 +271,7 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
                 page.on("response", on_response)
 
             metadata: dict[str, Any] = {
-                "fetch_mode": "rendered",
+                "fetch_mode": "rendered_html",
                 "wait_until": wait_until,
                 "timeout_ms": timeout_ms,
                 "goto_timeout_ms": goto_timeout_ms,

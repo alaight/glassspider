@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-FetchMode = Literal["static", "rendered", "api"]
+FetchMode = Literal["static_html", "rendered_html", "discovered_api", "declared_api"]
 
 
 @dataclass

@@ -150,7 +150,7 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
             # Allow cold Chromium launch + navigation (see CHROMIUM_LAUNCH_TIMEOUT_S, overall_timeout_ms).
             result = await asyncio.wait_for(
                 fetch_with_mode(
-                    mode="rendered",
+                    mode="rendered_html",
                     url=request.url,
                     client=client,
                     user_agent=settings.glassspider_worker_user_agent,

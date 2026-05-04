@@ -16,7 +16,7 @@ const sourceSchema = z.object({
   base_url: z.string().url(),
   entry_urls: z.string().min(1),
   status: z.enum(["active", "paused", "draft"]),
-  fetch_mode: z.enum(["static", "rendered", "api"]).default("static"),
+  fetch_mode: z.enum(["static_html", "rendered_html", "discovered_api", "declared_api"]).default("static_html"),
   fetch_config_json: z.string().optional(),
   crawl_frequency: z.string().optional(),
   scrape_frequency: z.string().optional(),
@@ -47,7 +47,7 @@ const tupleSchema = z.object({
 
 const sourceFetchSchema = z.object({
   source_id: z.string().uuid(),
-  fetch_mode: z.enum(["static", "rendered", "api"]),
+  fetch_mode: z.enum(["static_html", "rendered_html", "discovered_api", "declared_api"]),
   fetch_config_json: z.string().optional(),
 });
 

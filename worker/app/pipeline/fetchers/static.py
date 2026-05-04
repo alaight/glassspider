@@ -24,7 +24,7 @@ async def fetch_static(*, client: httpx.AsyncClient, url: str) -> FetchResult:
         json_data=None,
         discovered_requests=[],
         metadata={
-            "fetch_mode": "static",
+            "fetch_mode": "static_html",
             "duration_ms": int((time.perf_counter() - started) * 1000),
             "response_bytes": len(response.content),
         },

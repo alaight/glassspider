@@ -11,7 +11,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 type SourcesPageProps = {
-  searchParams: Promise<{ prefillUrl?: string; prefillTitle?: string; suggestRuleType?: string; suggestPattern?: string }>;
+  searchParams: Promise<{
+    prefillUrl?: string;
+    prefillTitle?: string;
+    suggestRuleType?: string;
+    suggestPattern?: string;
+    prefillFetchMode?: string;
+    prefillFetchConfig?: string;
+  }>;
 };
 
 export default async function SourcesPage({ searchParams }: SourcesPageProps) {
@@ -112,7 +119,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                   <span className="font-semibold">{source.name}</span>
                   <span className="text-[11px] uppercase text-[var(--muted)]">{source.status}</span>
                 </div>
-                <p className="text-[11px] uppercase text-[var(--muted)]">Fetch mode: {source.fetch_mode ?? "static"}</p>
+                <p className="text-[11px] uppercase text-[var(--muted)]">Fetch mode: {source.fetch_mode ?? "static_html"}</p>
                 <p className="text-xs text-[var(--muted)]">{source.base_url}</p>
               </Link>
             ))}
@@ -146,10 +153,15 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
             </label>
             <label className="block font-medium">
               Fetch mode
-              <select defaultValue="static" name="fetch_mode" className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5">
-                <option value="static">static (HTTP HTML)</option>
-                <option value="rendered">rendered (Playwright)</option>
-                <option value="api">api (direct JSON/API endpoint)</option>
+              <select
+                defaultValue={search.prefillFetchMode ?? "static_html"}
+                name="fetch_mode"
+                className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5"
+              >
+                <option value="static_html">static_html (HTTP HTML)</option>
+                <option value="rendered_html">rendered_html (Playwright)</option>
+                <option value="discovered_api">discovered_api (render+discover endpoint)</option>
+                <option value="declared_api">declared_api (direct API endpoint)</option>
               </select>
             </label>
             <label className="block font-medium">
@@ -158,7 +170,8 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                 name="fetch_config_json"
                 rows={6}
                 className="mt-1 w-full rounded border border-[var(--panel-border)] px-2 py-1.5 font-mono text-[11px]"
-                placeholder='{"rendered":{"wait_until":"networkidle","wait_for_selector":".product-card","steps":[{"type":"click","selector":"button:has-text(\"Apply filters\")"},{"type":"wait_for_selector","selector":".product-card"}]},"api":{"endpoint":null,"method":"GET","headers":{},"payload":null}}'
+                defaultValue={search.prefillFetchConfig ?? ""}
+                placeholder='{"rendered":{"wait_until":"networkidle","steps":[{"type":"click","selector":"button:has-text(\"Apply filters\")"}]},"declared_api":{"endpoint":"https://example.com/api/documents","method":"GET","record_selector":"$[*]","field_mapping":{"title":"$.name","external_id":"$.id"}}}'
               />
             </label>
             <label className="block font-medium">

@@ -22,7 +22,7 @@ export default async function ExplorePage() {
         <div className="space-y-3 text-xs leading-relaxed text-slate-700">
           <p>
             Use Explore to <strong className="font-semibold text-slate-900">probe a single HTTPS page</strong> without running a crawl: you get a rendered preview,
-            outbound links, and optional shortcuts that pre-fill{' '}
+            outbound links, discovered JSON/API endpoint candidates, and optional shortcuts that pre-fill{' '}
             <span className="font-medium text-slate-900">Sources</span> with draft patterns. Nothing here writes to the URL map or job queue unless you deliberately
             move work into Sources → Runs later.
           </p>

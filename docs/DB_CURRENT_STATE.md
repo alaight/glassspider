@@ -11,6 +11,7 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 - Initial schema: `supabase/migrations/20260426000000_glassspider_bid_intelligence_initial_schema.sql`
 - Job queue schema: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`
 - Source fetch strategy schema: `supabase/migrations/20260504090000_glassspider_source_fetch_modes.sql`
+- API discovery schema: `supabase/migrations/20260504101500_glassspider_api_discovery.sql`
 - The local Supabase CLI was not available when the migrations were created. Validate the migrations against the live shared schema before applying them.
 
 ## Shared Ecosystem Tables
@@ -21,8 +22,9 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 ## Product Tables
 
 - `glassspider_sources`: source registry with base URL, entry URLs, status, crawl/scrape cadence, compliance notes, and fetch strategy fields:
-  - `fetch_mode` (`static` | `rendered` | `api`; defaults to `static`)
-  - `fetch_config` (`jsonb`) for rendered wait/click/step configuration and API endpoint/method/header/payload overrides.
+  - `fetch_mode` (`static_html` | `rendered_html` | `discovered_api` | `declared_api`; defaults to `static_html`)
+  - `fetch_config` (`jsonb`) for rendered wait/click/step configuration plus API endpoint/method/header/payload and JSON extraction mapping (`record_selector`, `field_mapping`, `url_fields`).
+- `glassspider_endpoint_candidates`: captured/approved API endpoint candidates from Explore discovery, including response preview, structure profile (`jsonb`), suggested field mapping (`jsonb`), confidence score/label, and provenance metadata.
 - `glassspider_source_rules`: configurable include, exclude, listing, and detail URL patterns.
 - `glassspider_runs`: crawl/scrape/classification run history, counts, errors, and metadata.
 - `glassspider_discovered_urls`: stored URL map with source, type, crawl status, parent URL, matched rule, and content hash.
@@ -47,6 +49,7 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 - RLS is enabled on all `glassspider_*` tables.
 - Viewer roles can read product data after matching access in the shared project access tables.
 - Admin roles can manage source configuration (`glassspider_sources`, `glassspider_source_rules`, etc.) as allowed by migration policies — not every table exposes `UPDATE`/`INSERT` to admins.
+- Admin roles can manage `glassspider_endpoint_candidates` (approve or curate discovered endpoints); viewers can read candidate rows.
 - **`glassspider_discovered_urls`:** the bundled initial migration includes **read (`SELECT`)** access for authenticated Glassspider viewers. There is **no end-user `UPDATE` policy** there today. The Next.js console may expose “tag URL” intents, but **persisted status/type changes from the browser need a deliberate policy or RPC migration** before they succeed without the worker’s service-role client.
 - Canonical pipeline mutations (worker crawl upserts, scrape writes into `glassspider_raw_records` / `glassspider_bid_records`, classifications) use the Fly worker’s **service role**.
 - The web app relies on SSR Supabase contexts, honours RLS on reads/config mutations that are permitted, enqueues jobs through **`glassspider_enqueue_job`**, and never loads `SUPABASE_SERVICE_ROLE_KEY` in Vercel.

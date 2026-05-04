@@ -19,12 +19,17 @@ class FetchersTestCase(unittest.TestCase):
     def test_resolve_fetch_mode_defaults_static(self) -> None:
         source = {"fetch_mode": None}
         payload = {}
-        self.assertEqual(resolve_fetch_mode(source, payload), "static")
+        self.assertEqual(resolve_fetch_mode(source, payload), "static_html")
 
     def test_resolve_fetch_mode_payload_override(self) -> None:
+        source = {"fetch_mode": "static_html"}
+        payload = {"fetch_mode": "rendered_html"}
+        self.assertEqual(resolve_fetch_mode(source, payload), "rendered_html")
+
+    def test_resolve_fetch_mode_legacy_aliases(self) -> None:
         source = {"fetch_mode": "static"}
-        payload = {"fetch_mode": "rendered"}
-        self.assertEqual(resolve_fetch_mode(source, payload), "rendered")
+        payload = {"fetch_mode": "api"}
+        self.assertEqual(resolve_fetch_mode(source, payload), "declared_api")
 
     def test_resolve_fetch_config_merges_nested_dicts(self) -> None:
         source = {"fetch_config": {"rendered": {"wait_until": "networkidle", "timeout_ms": 30000}, "api": {"method": "GET"}}}
@@ -57,7 +62,7 @@ class FetchersTestCase(unittest.TestCase):
             )
             async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
                 result = await fetch_with_mode(
-                    mode="static",
+                    mode="static_html",
                     url="https://example.com",
                     client=client,
                     user_agent="GlassspiderTest/1.0",
@@ -65,7 +70,7 @@ class FetchersTestCase(unittest.TestCase):
                 )
             self.assertEqual(result.status_code, 200)
             self.assertIsNotNone(result.html)
-            self.assertEqual(result.metadata.get("fetch_mode"), "static")
+            self.assertEqual(result.metadata.get("fetch_mode"), "static_html")
 
         asyncio.run(run())
 

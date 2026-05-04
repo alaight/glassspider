@@ -55,7 +55,7 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
         <p className="text-xs">{source.data.compliance_notes ?? "No operator notes logged."}</p>
         <p className="mt-2 font-mono text-[11px] text-[var(--muted)]">{source.data.base_url}</p>
         <p className="mt-2 text-xs text-slate-700">
-          Fetch mode: <span className="font-semibold">{source.data.fetch_mode ?? "static"}</span>
+          Fetch mode: <span className="font-semibold">{source.data.fetch_mode ?? "static_html"}</span>
         </p>
       </Panel>
 
@@ -66,12 +66,13 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
             Mode
             <select
               name="fetch_mode"
-              defaultValue={source.data.fetch_mode ?? "static"}
+              defaultValue={source.data.fetch_mode ?? "static_html"}
               className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5"
             >
-              <option value="static">static</option>
-              <option value="rendered">rendered (Playwright)</option>
-              <option value="api">api endpoint</option>
+              <option value="static_html">static_html</option>
+              <option value="rendered_html">rendered_html (Playwright)</option>
+              <option value="discovered_api">discovered_api (render + endpoint capture)</option>
+              <option value="declared_api">declared_api endpoint</option>
             </select>
           </label>
           <label className="block font-medium">

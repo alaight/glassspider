@@ -14,6 +14,7 @@ from app.pipeline.fetchers import (
     serialise_json_preview,
 )
 from app.pipeline.normalise.html import normalise_record_from_html
+from app.pipeline.normalise.json import normalise_records_from_json_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,11 @@ async def run_scrape_job(db: Client, job: Job) -> dict[str, Any]:
     )
     fetch_mode = resolve_fetch_mode(source, job.payload)
     fetch_config = resolve_fetch_config(source, job.payload)
+    declared_api_config = fetch_config.get("declared_api")
+    if not isinstance(declared_api_config, dict):
+        legacy_api_cfg = fetch_config.get("api")
+        declared_api_config = legacy_api_cfg if isinstance(legacy_api_cfg, dict) else {}
+
     records_extracted = 0
     records_updated = 0
 
@@ -85,47 +91,60 @@ async def run_scrape_job(db: Client, job: Job) -> dict[str, Any]:
                     user_agent=settings.glassspider_worker_user_agent,
                     source_config=fetch_config,
                 )
-                html_input = result.html or result.text or ""
-                if not html_input and result.json_data is not None:
-                    html_input = serialise_json_preview(result.json_data)
-                normalised = normalise_record_from_html(url["url"], html_input)
-                existing_metadata = normalised["raw"].get("raw_metadata")
-                metadata_payload = existing_metadata if isinstance(existing_metadata, dict) else {}
-                metadata_payload["fetch"] = {
-                    "mode": fetch_mode,
-                    "url": result.url,
-                    "final_url": result.final_url,
-                    "status_code": result.status_code,
-                    "content_type": result.content_type,
-                    "discovered_requests_count": len(result.discovered_requests),
-                    "metadata": result.metadata,
-                }
-                if result.discovered_requests:
-                    metadata_payload["fetch"]["discovered_requests"] = result.discovered_requests[:20]
-                normalised["raw"]["raw_metadata"] = metadata_payload
-
-                raw_record = (
-                    db.table("glassspider_raw_records")
-                    .insert(
-                        {
-                            **normalised["raw"],
-                            "source_id": job.source_id,
-                            "discovered_url_id": url["id"],
-                            "run_id": None,
-                        }
+                mapped_records: list[dict[str, dict[str, Any]]] = []
+                if result.json_data is not None and declared_api_config:
+                    mapped_records = normalise_records_from_json_mapping(
+                        source_url=url["url"],
+                        payload=result.json_data,
+                        extraction_config=declared_api_config,
                     )
-                    .execute()
-                    .data[0]
-                )
 
-                db.table("glassspider_bid_records").upsert(
-                    {
-                        **normalised["bid"],
-                        "source_id": job.source_id,
-                        "raw_record_id": raw_record["id"],
-                    },
-                    on_conflict="source_url",
-                ).execute()
+                if not mapped_records:
+                    html_input = result.html or result.text or ""
+                    if not html_input and result.json_data is not None:
+                        html_input = serialise_json_preview(result.json_data)
+                    mapped_records = [normalise_record_from_html(url["url"], html_input)]
+
+                for normalised in mapped_records:
+                    existing_metadata = normalised["raw"].get("raw_metadata")
+                    metadata_payload = existing_metadata if isinstance(existing_metadata, dict) else {}
+                    metadata_payload["fetch"] = {
+                        "mode": fetch_mode,
+                        "url": result.url,
+                        "final_url": result.final_url,
+                        "status_code": result.status_code,
+                        "content_type": result.content_type,
+                        "discovered_requests_count": len(result.discovered_requests),
+                        "metadata": result.metadata,
+                    }
+                    if result.discovered_requests:
+                        metadata_payload["fetch"]["discovered_requests"] = result.discovered_requests[:20]
+                    normalised["raw"]["raw_metadata"] = metadata_payload
+
+                    raw_record = (
+                        db.table("glassspider_raw_records")
+                        .insert(
+                            {
+                                **normalised["raw"],
+                                "source_id": job.source_id,
+                                "discovered_url_id": url["id"],
+                                "run_id": None,
+                            }
+                        )
+                        .execute()
+                        .data[0]
+                    )
+
+                    db.table("glassspider_bid_records").upsert(
+                        {
+                            **normalised["bid"],
+                            "source_id": job.source_id,
+                            "raw_record_id": raw_record["id"],
+                        },
+                        on_conflict="source_url",
+                    ).execute()
+                    records_extracted += 1
+                    records_updated += 1
 
                 db.table("glassspider_discovered_urls").update(
                     {
@@ -134,9 +153,6 @@ async def run_scrape_job(db: Client, job: Job) -> dict[str, Any]:
                         "last_crawled_at": _now(),
                     }
                 ).eq("id", url["id"]).execute()
-
-                records_extracted += 1
-                records_updated += 1
                 logger.info(
                     "Scrape fetched url=%s mode=%s status=%s requests=%s",
                     url["url"],

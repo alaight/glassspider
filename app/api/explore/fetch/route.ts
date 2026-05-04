@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { hydrateEndpointCandidate, scoreEndpointCandidate, type EndpointCandidate } from "@/lib/explore-endpoints";
 import { getProductAccess } from "@/lib/auth";
 import { extractHtmlTitle, extractLinksFromHtml, groupLinksByOriginPath, stripScriptsForIframe } from "@/lib/explore-parse";
 import { ADMIN_ROLES } from "@/lib/product";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { validatePublicFetchUrl } from "@/lib/url-safety";
 
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
   url: z.string().min(4),
-  mode: z.enum(["static", "rendered", "api"]).default("static"),
+  mode: z.enum(["static_html", "rendered_html", "discovered_api", "declared_api"]).default("static_html"),
   sourceConfig: z.record(z.string(), z.unknown()).optional(),
   includeStaticBaseline: z.boolean().optional(),
+  sourceId: z.string().uuid().optional(),
+  persistCandidates: z.boolean().optional(),
 });
 
 class ExploreConfigurationError extends Error {}
@@ -157,6 +161,139 @@ async function fetchRenderedViaWorker(url: string, sourceConfig: Record<string, 
   }
 }
 
+async function fetchDeclaredApi(
+  sourcePageUrl: string,
+  sourceConfig: Record<string, unknown>,
+): Promise<{
+  candidate: EndpointCandidate;
+  links: Array<{ href: string; absoluteUrl: string; label: string }>;
+  textPreview: string;
+}> {
+  const declaredApiConfig = (() => {
+    const candidate = sourceConfig.declared_api;
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) return candidate as Record<string, unknown>;
+    const legacy = sourceConfig.api;
+    if (legacy && typeof legacy === "object" && !Array.isArray(legacy)) return legacy as Record<string, unknown>;
+    return {};
+  })();
+
+  const endpointRaw = String(declaredApiConfig.endpoint ?? sourcePageUrl);
+  const endpointTarget = validatePublicFetchUrl(endpointRaw);
+  const method = String(declaredApiConfig.method ?? "GET").toUpperCase();
+  const headersRaw = declaredApiConfig.headers;
+  const headers = headersRaw && typeof headersRaw === "object" && !Array.isArray(headersRaw) ? headersRaw : {};
+  const payload = declaredApiConfig.payload;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(endpointTarget.href, {
+      method,
+      headers: {
+        accept: "application/json,text/plain,*/*",
+        ...(headers as Record<string, string>),
+      },
+      body: method === "GET" || method === "HEAD" ? undefined : payload ? JSON.stringify(payload) : undefined,
+      signal: controller.signal,
+    });
+
+    const contentType = response.headers.get("content-type");
+    const text = await response.text();
+    const candidate = scoreEndpointCandidate({
+      sourcePageUrl,
+      endpointUrl: endpointTarget.href,
+      method,
+      status: response.status,
+      contentType,
+      requestPostData: payload ?? null,
+      preview: text.slice(0, 1500),
+    });
+    return {
+      candidate,
+      links: [],
+      textPreview: text.replace(/\s+/g, " ").trim().slice(0, 5_000),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function persistEndpointCandidates(sourceId: string | undefined, candidates: EndpointCandidate[]) {
+  if (!candidates.length) return;
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return;
+
+  const rows = candidates.map((candidate) => ({
+    source_id: sourceId ?? null,
+    source_page_url: candidate.source_page_url,
+    endpoint_url: candidate.endpoint_url,
+    method: candidate.method,
+    content_type: candidate.content_type,
+    status_code: candidate.status,
+    response_preview: candidate.preview,
+    request_post_data: candidate.request_post_data,
+    structure_profile: candidate.structure_profile,
+    suggested_mapping: candidate.suggested_mapping,
+    record_count_guess: candidate.record_count_guess,
+    confidence_score: candidate.confidence_score,
+    confidence_label: candidate.confidence,
+    discovery_method: candidate.discovery_method,
+    discovery_metadata: {
+      rejection_reasons: candidate.rejection_reasons,
+    },
+  }));
+
+  await supabase.from("glassspider_endpoint_candidates").upsert(rows, {
+    onConflict: "source_page_url,endpoint_url,method",
+  });
+}
+
+async function buildNetworkCandidates(sourcePageUrl: string, requests: Array<Record<string, unknown>>) {
+  const initial = requests.map((request) =>
+    scoreEndpointCandidate({
+      sourcePageUrl,
+      endpointUrl: String(request.url ?? ""),
+      method: typeof request.method === "string" ? request.method : null,
+      status: typeof request.status === "number" ? request.status : null,
+      contentType: typeof request.content_type === "string" ? request.content_type : null,
+      requestPostData: request.request_post_data ?? null,
+      preview: typeof request.preview === "string" ? request.preview : null,
+    }),
+  );
+
+  const filtered = initial
+    .filter((candidate) => candidate.endpoint_url.startsWith("http://") || candidate.endpoint_url.startsWith("https://"))
+    .sort((a, b) => b.confidence_score - a.confidence_score)
+    .slice(0, 25);
+
+  const topForHydration = filtered.slice(0, 4);
+  const hydrated = await Promise.all(
+    topForHydration.map((candidate) =>
+      hydrateEndpointCandidate(candidate, {
+        fetchJson: async ({ url, method, requestPostData }) => {
+          const target = validatePublicFetchUrl(url);
+          const response = await fetch(target.href, {
+            method,
+            headers: { accept: "application/json,text/plain,*/*" },
+            body: method === "GET" || method === "HEAD" ? undefined : typeof requestPostData === "string" ? requestPostData : JSON.stringify(requestPostData),
+          });
+          const contentType = response.headers.get("content-type") ?? "";
+          if (!contentType.toLowerCase().includes("json")) {
+            throw new Error("Not JSON");
+          }
+          return response.json();
+        },
+      }),
+    ),
+  );
+
+  const byKey = new Map<string, EndpointCandidate>();
+  for (const candidate of [...filtered, ...hydrated]) {
+    byKey.set(`${candidate.method}:${candidate.endpoint_url}`, candidate);
+  }
+  return [...byKey.values()].sort((a, b) => b.confidence_score - a.confidence_score);
+}
+
 export async function POST(request: Request) {
   const access = await getProductAccess();
 
@@ -182,7 +319,7 @@ export async function POST(request: Request) {
     const mode = parsed.data.mode;
     const sourceConfig = parsed.data.sourceConfig ?? {};
 
-    if (mode === "static") {
+    if (mode === "static_html") {
       const snapshot = await fetchStaticHtml(target);
       return NextResponse.json({
         mode,
@@ -193,20 +330,40 @@ export async function POST(request: Request) {
           contentType: "text/html",
           detectedRequests: [],
           jsonEndpoints: [],
-          metadata: { fetch_mode: "static" },
+          endpointCandidates: [],
+          metadata: { fetch_mode: "static_html" },
           renderedTextPreview: snapshot.textPreview,
         },
       });
     }
-
-    if (mode === "api") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Explore API mode is not enabled yet in this proxy. Use static or rendered.",
+    if (mode === "declared_api") {
+      const apiPreview = await fetchDeclaredApi(target.href, sourceConfig);
+      const endpointCandidates = [apiPreview.candidate];
+      if (parsed.data.persistCandidates) {
+        await persistEndpointCandidates(parsed.data.sourceId, endpointCandidates);
+      }
+      return NextResponse.json({
+        ok: true,
+        mode,
+        requestedUrl: parsed.data.url,
+        resolvedUrl: apiPreview.candidate.endpoint_url,
+        statusCode: apiPreview.candidate.status ?? 0,
+        title: null,
+        links: [],
+        grouped: [],
+        sanitisedHtml: "",
+        initialLinks: [],
+        renderedLinks: [],
+        diagnostics: {
+          workerConnectionStatus: "n/a",
+          contentType: apiPreview.candidate.content_type,
+          detectedRequests: [],
+          jsonEndpoints: endpointCandidates,
+          endpointCandidates,
+          metadata: { fetch_mode: "declared_api" },
+          renderedTextPreview: apiPreview.textPreview,
         },
-        { status: 400 },
-      );
+      });
     }
 
     const includeStaticBaseline = parsed.data.includeStaticBaseline ?? true;
@@ -243,6 +400,10 @@ export async function POST(request: Request) {
       config_echo: Record<string, unknown>;
     };
     const workerLinks = workerPayload.anchors ?? [];
+    const endpointCandidates = await buildNetworkCandidates(target.href, workerPayload.discovered_requests ?? []);
+    if (parsed.data.persistCandidates) {
+      await persistEndpointCandidates(parsed.data.sourceId, endpointCandidates);
+    }
     const grouped = [...groupLinksByOriginPath(workerLinks)].map(([pattern, items]) => ({ pattern, items }));
 
     return NextResponse.json({
@@ -264,7 +425,8 @@ export async function POST(request: Request) {
         buttonsDetected: workerPayload.buttons_detected ?? [],
         contentType: "text/html",
         detectedRequests: workerPayload.discovered_requests ?? [],
-        jsonEndpoints: workerPayload.json_endpoints ?? [],
+        jsonEndpoints: endpointCandidates,
+        endpointCandidates,
         metadata: workerPayload.metadata ?? {},
         warnings: workerPayload.warnings ?? [],
         renderedTextPreview: workerPayload.text_preview ?? "",
