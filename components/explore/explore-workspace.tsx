@@ -259,6 +259,10 @@ export function ExploreWorkspace() {
               },
             },
           });
+          if (!payload.ok) {
+            setPromotionError(payload.error);
+            return;
+          }
           setSavedDraftSourceId(payload.sourceId);
         } catch (saveError) {
           setPromotionError(saveError instanceof Error ? saveError.message : "Failed to save source draft.");

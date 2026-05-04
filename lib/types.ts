@@ -43,6 +43,7 @@ export type SourceFetchConfig = {
     headers?: Record<string, string>;
     payload?: unknown;
   };
+  provenance?: Record<string, unknown>;
 };
 
 export type Source = {
@@ -54,6 +55,8 @@ export type Source = {
   status: SourceStatus;
   fetch_mode: FetchMode;
   fetch_config: SourceFetchConfig;
+  extraction_mapping?: Record<string, unknown>;
+  discovery_metadata?: Record<string, unknown>;
   crawl_frequency: string | null;
   scrape_frequency: string | null;
   compliance_notes: string | null;

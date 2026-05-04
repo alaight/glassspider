@@ -24,6 +24,8 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 - `glassspider_sources`: source registry with base URL, entry URLs, status, crawl/scrape cadence, compliance notes, and fetch strategy fields:
   - `fetch_mode` (`static_html` | `rendered_html` | `discovered_api` | `declared_api`; defaults to `static_html`)
   - `fetch_config` (`jsonb`) for rendered wait/click/step configuration plus API endpoint/method/header/payload and JSON extraction mapping (`record_selector`, `field_mapping`, `url_fields`).
+  - `extraction_mapping` (`jsonb`) for source-level canonical field mappings.
+  - `discovery_metadata` (`jsonb`) for provenance (`discovered_from_url`, confidence, estimated records, structure profile).
 - `glassspider_endpoint_candidates`: captured/approved API endpoint candidates from Explore discovery, including response preview, structure profile (`jsonb`), suggested field mapping (`jsonb`), confidence score/label, and provenance metadata.
 - `glassspider_source_rules`: configurable include, exclude, listing, and detail URL patterns.
 - `glassspider_runs`: crawl/scrape/classification run history, counts, errors, and metadata.

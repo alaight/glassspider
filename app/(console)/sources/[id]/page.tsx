@@ -48,6 +48,22 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
   }
 
   const defaultRuleType = search.suggestRuleType === "detail" ? "detail" : search.suggestRuleType === "listing" ? "listing" : "include";
+  const declaredApiConfig =
+    source.data.fetch_config?.declared_api && typeof source.data.fetch_config.declared_api === "object"
+      ? source.data.fetch_config.declared_api
+      : null;
+  const mappingPreview =
+    source.data.extraction_mapping && typeof source.data.extraction_mapping === "object"
+      ? source.data.extraction_mapping
+      : declaredApiConfig && typeof declaredApiConfig.field_mapping === "object"
+        ? declaredApiConfig.field_mapping
+        : {};
+  const discoveryMeta =
+    source.data.discovery_metadata && typeof source.data.discovery_metadata === "object"
+      ? source.data.discovery_metadata
+      : source.data.fetch_config?.provenance && typeof source.data.fetch_config.provenance === "object"
+        ? source.data.fetch_config.provenance
+        : null;
 
   return (
     <div className="space-y-4 p-4">
@@ -92,6 +108,32 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
           </ConsoleButton>
         </form>
       </Panel>
+
+      {source.data.fetch_mode === "declared_api" ? (
+        <Panel title="Declared API" eyebrow="Endpoint and mapping">
+          <div className="space-y-3 text-xs">
+            <p>
+              Endpoint:{" "}
+              <span className="font-mono">
+                {typeof declaredApiConfig?.endpoint === "string" ? declaredApiConfig.endpoint : "Not configured"}
+              </span>
+            </p>
+            <p>
+              Method: <span className="font-semibold">{typeof declaredApiConfig?.method === "string" ? declaredApiConfig.method : "GET"}</span>
+            </p>
+            <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
+              <p className="mb-1 font-semibold text-slate-800">Extraction mapping</p>
+              <pre className="max-h-48 overflow-auto text-[10px] text-slate-700">{JSON.stringify(mappingPreview, null, 2)}</pre>
+            </div>
+            {discoveryMeta ? (
+              <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
+                <p className="mb-1 font-semibold text-slate-800">Discovery metadata</p>
+                <pre className="max-h-48 overflow-auto text-[10px] text-slate-700">{JSON.stringify(discoveryMeta, null, 2)}</pre>
+              </div>
+            ) : null}
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.85fr]">
         <Panel title={`Rules (${rules.data.length})`}>

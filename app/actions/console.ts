@@ -166,17 +166,17 @@ export async function createSource(formData: FormData) {
 export async function createDeclaredApiSourceDraft(input: unknown) {
   const access = await requireAdminAccess();
   if (access.status !== "granted") {
-    throw new Error(access.message ?? "Admin access required.");
+    return { ok: false as const, error: access.message ?? "Admin access required." };
   }
 
   const parsed = declaredApiDraftSchema.safeParse(input);
   if (!parsed.success) {
-    throw new Error("Invalid API draft payload.");
+    return { ok: false as const, error: "Invalid API draft payload." };
   }
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
-    throw new Error("Supabase is not configured.");
+    return { ok: false as const, error: "Supabase is not configured." };
   }
 
   const payload = parsed.data;
@@ -204,6 +204,14 @@ export async function createDeclaredApiSourceDraft(input: unknown) {
     },
   };
 
+  const discoveryMetadata = {
+    discovered_from_url: payload.sourcePageUrl,
+    discovery_method: "rendered_network_capture",
+    discovered_at: new Date().toISOString(),
+    candidate_confidence: payload.candidateConfidence ?? null,
+    estimated_records: payload.detectedRecordCount ?? null,
+    structure_profile: payload.structureProfile ?? {},
+  };
   const { data, error } = await supabase
     .from("glassspider_sources")
     .insert({
@@ -214,6 +222,8 @@ export async function createDeclaredApiSourceDraft(input: unknown) {
       status: "draft",
       fetch_mode: "declared_api",
       fetch_config: draftFetchConfig,
+      extraction_mapping: payload.fieldMapping,
+      discovery_metadata: discoveryMetadata,
       crawl_frequency: "manual",
       scrape_frequency: "manual",
       compliance_notes: "Review terms/robots and endpoint usage before activating source.",
@@ -222,11 +232,12 @@ export async function createDeclaredApiSourceDraft(input: unknown) {
     .single();
 
   if (error || !data?.id) {
-    throw new Error(error?.message ?? "Failed to save source draft.");
+    const safeMessage = (error?.message ?? "Failed to save source draft.").replace(/\s+/g, " ").trim();
+    return { ok: false as const, error: safeMessage };
   }
 
   revalidateConsole();
-  return { sourceId: data.id };
+  return { ok: true as const, sourceId: data.id };
 }
 
 export async function updateSourceFetchStrategy(formData: FormData) {
