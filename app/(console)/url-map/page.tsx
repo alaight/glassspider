@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { UrlMapClient } from "@/components/url-map/url-map-client";
 import { AccessPanel } from "@/components/access-panel";
 import { Panel } from "@/components/ui/panel";
@@ -52,18 +54,19 @@ export default async function UrlMapRoute({ searchParams }: UrlMapPageProps) {
   };
 
   const [sources, urls] = await Promise.all([listSources(supabase), listDiscoveredUrlsPaged(supabase, filters)]);
+  const selectedSource = filters.sourceId ? sources.data.find((source) => source.id === filters.sourceId) : null;
+  const selectedSourceIsApi =
+    selectedSource?.fetch_mode === "declared_api" || selectedSource?.fetch_mode === "discovered_api";
 
   return (
     <div className="space-y-3 p-4">
-      <Panel eyebrow="Discoveries from crawl jobs" title="URL map">
+      <Panel eyebrow="Scope" title="Scope crawl coverage">
         <div className="space-y-3 text-xs leading-relaxed text-slate-700">
           <p>
-            After a <strong className="font-semibold text-slate-900">crawl</strong>, discovered links land here so you can review, classify, bulk-queue{' '}
-            <span className="font-medium text-slate-900">extract / scrape</span> jobs, or tag statuses. Filters narrow by URL type (listing vs detail, etc.), status,
-            and source.
+            Scope is used when Glassspider needs to crawl many pages before extraction. API sources may skip this step.
           </p>
           <div>
-            <p className="font-semibold text-slate-900">What “success” looks like</p>
+            <p className="font-semibold text-slate-900">What success looks like</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
               <li>Rows appear after Runs → job type crawl completes for your source.</li>
               <li>Detail-ish URLs accumulate status updates as extract jobs drain the queue.</li>
@@ -72,6 +75,18 @@ export default async function UrlMapRoute({ searchParams }: UrlMapPageProps) {
           </div>
         </div>
       </Panel>
+      {selectedSource && selectedSourceIsApi ? (
+        <Panel eyebrow="API source" title="Scope not required for this source">
+          <p className="text-xs text-slate-700">
+            <span className="font-semibold">{selectedSource.name}</span> uses a direct API endpoint, so URL map coverage is optional.
+          </p>
+          <div className="mt-3">
+            <Link href="/runs" className="rounded border border-[var(--panel-border)] bg-white px-3 py-1.5 text-xs font-semibold">
+              Go to run extraction
+            </Link>
+          </div>
+        </Panel>
+      ) : null}
       <UrlMapClient
         sources={sources.data}
         rows={urls.data.rows}

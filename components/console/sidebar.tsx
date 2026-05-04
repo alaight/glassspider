@@ -13,14 +13,14 @@ type NavEntry = {
 };
 
 const OPERATOR_NAV: NavEntry[] = [
-  { href: "/explore", label: "Explore", exact: true, title: "Fetch any URL once; inspect links without using the crawler" },
-  { href: "/sources", label: "Sources", exact: false, title: "Crawl scopes and extractor rules" },
-  { href: "/url-map", label: "URL map", exact: true, title: "Discovered links from crawl jobs; queue extract runs" },
-  { href: "/runs", label: "Runs", exact: true, title: "Enqueue crawl · extract · classify jobs" },
-  { href: "/data", label: "Data", exact: true, title: "Structured rows after extract jobs (full‑text keyword search)" },
+  { href: "/explore", label: "Discover", exact: true, title: "Start from a public page and find data sources" },
+  { href: "/sources", label: "Sources", exact: false, title: "Define extraction method and mapping" },
+  { href: "/url-map", label: "Scope", exact: true, title: "Review discovered crawl URLs before extraction" },
+  { href: "/runs", label: "Runs", exact: true, title: "Run extraction jobs and monitor progress" },
+  { href: "/data", label: "Results", exact: true, title: "Review extracted records" },
 ];
 
-const VIEWER_NAV: NavEntry[] = [{ href: "/data", label: "Data", exact: true, title: "Structured rows (full‑text keyword search)" }];
+const VIEWER_NAV: NavEntry[] = [{ href: "/data", label: "Results", exact: true, title: "Review extracted records" }];
 
 const MINIMAL_NAV: NavEntry[] = [{ href: "/", label: "Home", exact: true }];
 
@@ -52,7 +52,7 @@ export function ConsoleSidebar({ navMode }: ConsoleSidebarProps) {
   return (
     <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col border-r border-[var(--panel-border)] bg-[var(--panel)] px-3 py-4">
       <div className="mb-6 px-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">Crawl · extract · review</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">Discover · define · run · review</p>
         <p className="mt-0.5 truncate text-base font-semibold text-slate-900">Glassspider</p>
       </div>
       <nav className="flex flex-col gap-0.5" aria-label="Primary">
@@ -64,7 +64,7 @@ export function ConsoleSidebar({ navMode }: ConsoleSidebarProps) {
         <div className="mt-auto border-t border-[var(--panel-border)] pt-4 px-1 text-[10px] leading-snug text-slate-500">
           <p className="font-semibold uppercase tracking-wide text-slate-400">Typical flow</p>
           <p className="mt-1">
-            Sources → Runs (crawl) → URL map → Runs (extract) → Data. Explore is optional reconnaissance before committing a crawl scope or rule.
+            Discover → Sources → Scope (crawl only) → Runs → Results. API-first sources can skip Scope and run extraction directly.
           </p>
         </div>
       ) : navMode === "viewer" ? (

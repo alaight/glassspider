@@ -45,10 +45,10 @@ export function InspectorRail({ navMode }: { navMode: SidebarNavMode }) {
 
   const idleHint =
     navMode === "viewer"
-      ? "Pick a row under Data—structured fields, raw capture, and classifiers appear here."
+      ? "Select a result row to inspect extracted fields, source links, and raw capture."
       : navMode === "minimal"
-        ? "Finish sign-in above, then revisit Data with Glassspider access."
-        : "Select a workspace row or open a drill-down—the inspector shows payloads, raw text, or classifier outputs.";
+        ? "Finish sign-in above, then revisit Results with Glassspider access."
+        : "Select a source, endpoint, run, or record to inspect details.";
 
   return (
     <aside className="relative hidden shrink-0 border-l border-[var(--panel-border)] bg-[var(--panel)] shadow-sm lg:flex lg:w-[380px] lg:flex-col xl:w-[440px]">

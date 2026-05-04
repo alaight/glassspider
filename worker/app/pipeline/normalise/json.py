@@ -96,6 +96,8 @@ def normalise_records_from_json_mapping(
         title = str(mapped.get("title") or mapped.get("name") or "Untitled record")
         source_document_url = (
             mapped.get("source_document_url")
+            or mapped.get("document_url")
+            or mapped.get("primary_url")
             or mapped.get("download_url")
             or mapped.get("detail_url")
             or source_url

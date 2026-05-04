@@ -24,6 +24,7 @@
   - **`/data`** (viewer+): filtered record explorer; keyword mode uses FTS on **`glassspider_bid_records.search_vector`**; inspector uses **`GET /api/console/records/[id]`** (canonical + raw + classifications).
   - **`/records/[id]`** (viewer+): full-page drill-down JSON + raw + classifier rows.
 - **`/`:** role redirect (admins → `/explore`, others → `/data`); sign-in redirects at root when unauthenticated.
+- **Operator navigation labels:** Discover (`/explore`), Sources (`/sources`), Scope (`/url-map`), Runs (`/runs`), Results (`/data`) with a workflow strip in the shell.
 - **Legacy:** `/admin/*` and **`/dashboard/*`** redirect into the canonical paths (bookmarks preserved).
 - **Additional API routes:** `GET /api/console/jobs`; `GET /api/console/records/[id]`; existing `POST /api/admin/runs`, `GET /api/dashboard/export`, `POST /api/cron/run-scheduled` unchanged in role.
 - **Server actions:** `app/actions/console.ts` (enqueue, sources/rules, retries, batch scrape helpers); **`app/admin/actions.ts`** re-exports for compatibility.

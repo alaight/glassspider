@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 
 import { retryFailedJob } from "@/app/actions/console";
@@ -173,6 +174,11 @@ export function RunsJobsMonitor({ initialJobs, initialRuns }: { initialJobs: Pip
                   <span className="rounded bg-slate-100 px-2 py-1">{run.records_extracted} extracted</span>
                   <span className="rounded bg-slate-100 px-2 py-1">{run.records_updated} updated</span>
                 </div>
+                {run.status === "succeeded" ? (
+                  <Link href="/data" className="text-[11px] font-semibold text-[var(--accent)] underline-offset-2 hover:underline">
+                    View results
+                  </Link>
+                ) : null}
                 {run.error_message ? <p className="w-full text-[11px] text-red-700">{run.error_message}</p> : null}
               </div>
             ))

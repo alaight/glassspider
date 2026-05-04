@@ -18,28 +18,17 @@ export default async function ExplorePage() {
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title="Explore" eyebrow="Reconnaissance sandbox">
+      <Panel title="Discover a data source" eyebrow="Discover">
         <div className="space-y-3 text-xs leading-relaxed text-slate-700">
           <p>
-            Use Explore to <strong className="font-semibold text-slate-900">probe a single HTTPS page</strong> without running a crawl: you get a rendered preview,
-            outbound links, discovered JSON/API endpoint candidates, and optional shortcuts that pre-fill{' '}
-            <span className="font-medium text-slate-900">Sources</span> with draft patterns. Nothing here writes to the URL map or job queue unless you deliberately
-            move work into Sources → Runs later.
+            Enter a public page URL and Glassspider will inspect it, reveal links, detect hidden JSON/API data sources, and suggest the fastest extraction route.
           </p>
           <div>
-            <p className="font-semibold text-slate-900">When to use it</p>
+            <p className="font-semibold text-slate-900">What happens here</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-[var(--muted)] [&>li]:text-slate-700">
-              <li>Checking whether you can reliably fetch HTML from a host before defining a scope.</li>
-              <li>Harvesting anchor patterns so crawler rules stay tight (fewer noisy URLs).</li>
-              <li>Sanity-testing TLS, redirects, and bot challenges on a lone URL.</li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-semibold text-slate-900">Good sites to practise on</p>
-            <ul className="mt-1 list-disc space-y-1 pl-5 text-[var(--muted)] [&>li]:text-slate-700">
-              <li>Your own staging or a small static brochure site you control.</li>
-              <li>Public listing pages whose terms allow crawling (respect robots.txt and acceptable use).</li>
-              <li>Avoid authenticated portals or heavy SPA-only shells until the fetch path supports them.</li>
+              <li>Find whether records come from static HTML, rendered HTML, or a hidden API endpoint.</li>
+              <li>Preview candidate data endpoints and promote one into a source draft.</li>
+              <li>Keep technical diagnostics available without making them the primary UI.</li>
             </ul>
           </div>
         </div>

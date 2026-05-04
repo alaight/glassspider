@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { ConsoleSidebar, type SidebarNavMode } from "@/components/console/sidebar";
+import { WorkflowStrip } from "@/components/console/workflow-strip";
 
 import { InspectorProvider, InspectorRail } from "./inspector";
 
@@ -17,7 +18,10 @@ export function ConsoleShell({ children, navMode }: ConsoleShellProps) {
       <div className="flex min-h-screen w-full bg-slate-100 text-slate-900">
         <ConsoleSidebar navMode={navMode} />
         <div className="flex min-w-0 flex-1 flex-row">
-          <main className="min-w-0 flex-1 overflow-x-auto">{children}</main>
+          <main className="min-w-0 flex-1 overflow-x-auto">
+            {navMode === "operator" ? <WorkflowStrip /> : null}
+            {children}
+          </main>
           <InspectorRail navMode={navMode} />
         </div>
       </div>

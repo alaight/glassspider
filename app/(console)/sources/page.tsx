@@ -67,21 +67,17 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title="Sources" eyebrow="What this screen does">
+      <Panel title="Define extraction rules" eyebrow="Sources">
         <div className="space-y-3 text-xs leading-relaxed text-slate-700">
           <p>
-            <strong className="font-semibold text-slate-900">Sources</strong> are the crawl registry: base URL, entry seed links, extractor context, compliance notes,
-            and status (<span className="font-mono">draft / active / paused</span>). Each listed source expands on its own route for{' '}
-            <span className="font-medium text-slate-900">crawler rules</span> (patterns, extractor hints, etc.).
+            Define where records come from and how Glassspider should extract them. You can use static HTML, interactive pages, or direct API endpoints.
           </p>
           <div>
-            <p className="font-semibold text-slate-900">Typical troubleshooting path</p>
+            <p className="font-semibold text-slate-900">Typical workflow</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
-              <li>
-                Confirm the base URL resolves and entry URLs capture the breadth you intend (homepage vs deep listing entry points).
-              </li>
-              <li>Open <span className="font-medium">Runs</span>, enqueue a crawl for this source; expect new rows in <span className="font-medium">URL map</span>.</li>
-              <li>If nothing appears, revisit rules and entry URLs—or use Explore to prototype fetch behavior first.</li>
+              <li>Start in Discover, then save the endpoint/page as a source draft.</li>
+              <li>Complete source definition here (method, mapping, compliance notes).</li>
+              <li>Run extraction from Runs. Crawl-first sources then continue through Scope; API sources can skip Scope.</li>
             </ul>
           </div>
         </div>
@@ -119,8 +115,11 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                   <span className="font-semibold">{source.name}</span>
                   <span className="text-[11px] uppercase text-[var(--muted)]">{source.status}</span>
                 </div>
-                <p className="text-[11px] uppercase text-[var(--muted)]">Fetch mode: {source.fetch_mode ?? "static_html"}</p>
+                <p className="text-[11px] uppercase text-[var(--muted)]">Extraction method: {source.fetch_mode ?? "static_html"}</p>
                 <p className="text-xs text-[var(--muted)]">{source.base_url}</p>
+                <p className="mt-1 text-[11px] text-slate-600">
+                  Next step: {source.fetch_mode === "declared_api" ? "Run extraction directly" : "Review scope then run extraction"}
+                </p>
               </Link>
             ))}
             {sources.data.length === 0 ? <p className="text-xs text-[var(--muted)]">Nothing configured yet.</p> : null}
@@ -158,10 +157,10 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                 name="fetch_mode"
                 className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5"
               >
-                <option value="static_html">static_html (HTTP HTML)</option>
-                <option value="rendered_html">rendered_html (Playwright)</option>
-                <option value="discovered_api">discovered_api (render+discover endpoint)</option>
-                <option value="declared_api">declared_api (direct API endpoint)</option>
+                <option value="static_html">Quick fetch (static HTML)</option>
+                <option value="rendered_html">Interactive fetch (rendered HTML)</option>
+                <option value="discovered_api">Find data sources (discover API)</option>
+                <option value="declared_api">Use known API endpoint</option>
               </select>
             </label>
             <label className="block font-medium">

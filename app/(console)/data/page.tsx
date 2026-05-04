@@ -53,17 +53,16 @@ export default async function DataRoute({ searchParams }: DataRouteProps) {
 
   return (
     <div className="space-y-3 p-4">
-      <Panel title="Data" eyebrow="Extracted bid records">
+      <Panel title="Results" eyebrow="Extracted records">
         <div className="space-y-3 text-xs leading-relaxed text-slate-700">
           <p>
-            This grid shows <strong className="font-semibold text-slate-900">structured rows emitted by extractor runs</strong> (titles, counterparties, review
-            state, etc.). Keyword search hits Postgres full-text on the indexed{' '}
+            This grid shows <strong className="font-semibold text-slate-900">structured records emitted by extraction runs</strong>. Keyword search hits Postgres full-text on the indexed{" "}
             <span className="font-mono text-[11px]">search_vector</span> column—pair it with Source and date filters to reproduce customer issues quickly.
           </p>
           <div>
             <p className="font-semibold text-slate-900">How it ties upstream</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
-              <li>Empty grid after a crawl → URL map may lack detail URLs queued for scrape, or extract jobs errored.</li>
+              <li>Empty grid after a crawl → Scope may lack detail URLs queued for scrape, or extract jobs errored.</li>
               <li>Rows present but stale → rerun extract with tighter filters via Runs.</li>
               <li>Open a row in the inspector rail (desktop) or follow <span className="font-mono text-[11px]">/records/&lt;id&gt;</span> for JSON + canon data.</li>
             </ul>

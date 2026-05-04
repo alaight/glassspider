@@ -27,6 +27,13 @@ export type JsonStructureProfile = {
   top_level_keys: string[];
   common_keys: string[];
   nested_keys: string[];
+  likely_fields: {
+    title: string | null;
+    external_id: string | null;
+    date: string | null;
+    primary_url: string | null;
+    image: string | null;
+  };
   sample_records: Array<Record<string, unknown>>;
   guessed_fields: Record<string, string>;
   possible_url_fields: string[];
@@ -79,6 +86,14 @@ function flattenObjectKeys(input: unknown, prefix = "", output = new Set<string>
 
 function firstMatchingKey(keys: string[], hints: string[]) {
   return keys.find((key) => hints.some((hint) => key.toLowerCase().includes(hint))) ?? null;
+}
+
+function preferNestedKey(keys: string[], preferred: string[]) {
+  for (const candidate of preferred) {
+    const exact = keys.find((key) => key.toLowerCase() === candidate.toLowerCase());
+    if (exact) return exact;
+  }
+  return null;
 }
 
 function isLikelyUrlKey(key: string) {
@@ -138,12 +153,27 @@ export function profileJsonStructure(payload: unknown): JsonStructureProfile {
   const guessedImage = firstMatchingKey(possibleImageFields, IMAGE_KEYS);
   if (guessedImage) guessed_fields.image_url = guessedImage;
 
+  const likelyTitle = preferNestedKey(nestedKeys, ["name", "title", "product.name"]) ?? guessedTitle;
+  const likelyId = preferNestedKey(nestedKeys, ["id", "uuid"]) ?? guessedId;
+  const likelyDate = preferNestedKey(nestedKeys, ["publishDate", "published_date", "date"]) ?? guessedDate;
+  const likelyPrimaryUrl =
+    preferNestedKey(nestedKeys, ["url", "downloadUrl", "product.slug", "slug"]) ??
+    firstMatchingKey(possibleUrlFields, ["url", "download", "slug", "link"]);
+  const likelyImage = preferNestedKey(nestedKeys, ["product.imageUrl", "imageUrl", "image"]) ?? guessedImage;
+
   return {
     root_type: rootType,
     array_length: Array.isArray(payload) ? payload.length : null,
     top_level_keys: topLevelKeys,
     common_keys: commonKeys,
     nested_keys: nestedKeys,
+    likely_fields: {
+      title: likelyTitle,
+      external_id: likelyId,
+      date: likelyDate,
+      primary_url: likelyPrimaryUrl,
+      image: likelyImage,
+    },
     sample_records: sampleRecords,
     guessed_fields,
     possible_url_fields: possibleUrlFields,
@@ -160,14 +190,45 @@ export function buildSuggestedMapping(
 ): SuggestedJsonMapping | null {
   const { baseUrl } = options;
   if (profile.root_type !== "array") return null;
+  const nested = profile.nested_keys;
+  const choose = (...candidates: string[]) =>
+    candidates
+      .map((candidate) => nested.find((item) => item.toLowerCase() === candidate.toLowerCase()) ?? null)
+      .find(Boolean) ?? null;
+
   const fields: Record<string, string> = {};
-  for (const [canonicalField, sourceField] of Object.entries(profile.guessed_fields)) {
-    fields[canonicalField] = `$.${sourceField}`;
+  const externalId = choose("id", "uuid") ?? profile.guessed_fields.external_id ?? null;
+  if (externalId) fields.external_id = `$.${externalId}`;
+  const title = choose("name", "title", "product.name") ?? profile.guessed_fields.title ?? null;
+  if (title) fields.title = `$.${title}`;
+  const documentUrl =
+    choose("url", "downloadUrl", "documentUrl") ??
+    profile.guessed_fields.source_document_url ??
+    profile.likely_fields.primary_url;
+  if (documentUrl) {
+    fields.document_url = `$.${documentUrl}`;
+    fields.source_document_url = `$.${documentUrl}`;
   }
+  const primaryUrl = choose("url", "product.slug", "slug", "link") ?? profile.likely_fields.primary_url;
+  if (primaryUrl) fields.primary_url = `$.${primaryUrl}`;
+  const category = choose("product.category", "category");
+  if (category) fields.category = `$.${category}`;
+  const productName = choose("product.name", "name");
+  if (productName) fields.product_name = `$.${productName}`;
+  const recordType = choose("type", "documentType", "kind");
+  if (recordType) fields.record_type = `$.${recordType}`;
+  const published = choose("publishDate", "published_date", "date");
+  if (published) fields.published_date_raw = `$.${published}`;
+  const image = choose("product.imageUrl", "imageUrl", "image");
+  if (image) fields.image_url = `$.${image}`;
+  const detailUrl = choose("product.slug", "slug", "detailUrl", "path");
+  if (detailUrl) fields.detail_url = `$.${detailUrl}`;
+  fields.raw_json = "$";
   if (Object.keys(fields).length === 0) return null;
 
   const url_fields: Record<string, { base_url: string }> = {};
-  for (const [canonicalField, sourceField] of Object.entries(profile.guessed_fields)) {
+  for (const [canonicalField, selector] of Object.entries(fields)) {
+    const sourceField = selector.replace(/^\$\./, "");
     if (canonicalField.includes("url") || isLikelyUrlKey(sourceField)) {
       url_fields[canonicalField] = { base_url: baseUrl };
     }

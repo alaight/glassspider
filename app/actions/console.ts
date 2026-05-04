@@ -51,6 +51,20 @@ const sourceFetchSchema = z.object({
   fetch_config_json: z.string().optional(),
 });
 
+const declaredApiDraftSchema = z.object({
+  sourceName: z.string().min(2).max(180),
+  sourcePageUrl: z.string().url(),
+  endpointUrl: z.string().url(),
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
+  detectedRecordCount: z.number().int().nonnegative().nullable().optional(),
+  candidateConfidence: z.number().min(0).max(100).nullable().optional(),
+  structureProfile: z.record(z.string(), z.unknown()).optional(),
+  fieldMapping: z.record(z.string(), z.string()).default({}),
+  urlFields: z.record(z.string(), z.record(z.string(), z.string())).default({}),
+  recordSelector: z.string().default("$[*]"),
+  rawConfig: z.record(z.string(), z.unknown()).optional(),
+});
+
 function parseFetchConfigJson(value?: string) {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -79,6 +93,31 @@ function revalidateConsole() {
   revalidatePath("/admin/runs");
   revalidatePath("/admin/url-map");
   revalidatePath("/dashboard/search");
+}
+
+function slugify(value: string) {
+  const base = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 54);
+  return base || "source";
+}
+
+async function buildUniqueSourceSlug(
+  supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
+  sourceName: string,
+) {
+  const base = slugify(sourceName);
+  const candidates = [base, `${base}-api`, `${base}-source`].map((item) => item.slice(0, 64));
+
+  for (const candidate of candidates) {
+    const { data } = await supabase.from("glassspider_sources").select("id").eq("slug", candidate).maybeSingle();
+    if (!data) return candidate;
+  }
+
+  const stamp = Date.now().toString(36).slice(-6);
+  return `${base.slice(0, 57)}-${stamp}`;
 }
 
 export async function createSource(formData: FormData) {
@@ -122,6 +161,72 @@ export async function createSource(formData: FormData) {
   }
 
   revalidateConsole();
+}
+
+export async function createDeclaredApiSourceDraft(input: unknown) {
+  const access = await requireAdminAccess();
+  if (access.status !== "granted") {
+    throw new Error(access.message ?? "Admin access required.");
+  }
+
+  const parsed = declaredApiDraftSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("Invalid API draft payload.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const payload = parsed.data;
+  const sourcePage = new URL(payload.sourcePageUrl);
+  const slug = await buildUniqueSourceSlug(supabase, payload.sourceName);
+
+  const draftFetchConfig = {
+    declared_api: {
+      endpoint: payload.endpointUrl,
+      method: payload.method,
+      record_selector: payload.recordSelector || "$[*]",
+      field_mapping: payload.fieldMapping,
+      url_fields: payload.urlFields,
+      // Keep a raw copy for future editor phases.
+      raw_json: payload.rawConfig ?? {},
+    },
+    provenance: {
+      discovered_from_url: payload.sourcePageUrl,
+      discovery_method: "rendered_network_capture",
+      discovered_at: new Date().toISOString(),
+      candidate_confidence: payload.candidateConfidence ?? null,
+      structure_profile: payload.structureProfile ?? {},
+      field_mapping: payload.fieldMapping,
+      detected_record_count: payload.detectedRecordCount ?? null,
+    },
+  };
+
+  const { data, error } = await supabase
+    .from("glassspider_sources")
+    .insert({
+      name: payload.sourceName,
+      slug,
+      base_url: `${sourcePage.origin}/`,
+      entry_urls: [payload.sourcePageUrl],
+      status: "draft",
+      fetch_mode: "declared_api",
+      fetch_config: draftFetchConfig,
+      crawl_frequency: "manual",
+      scrape_frequency: "manual",
+      compliance_notes: "Review terms/robots and endpoint usage before activating source.",
+    })
+    .select("id")
+    .single();
+
+  if (error || !data?.id) {
+    throw new Error(error?.message ?? "Failed to save source draft.");
+  }
+
+  revalidateConsole();
+  return { sourceId: data.id };
 }
 
 export async function updateSourceFetchStrategy(formData: FormData) {

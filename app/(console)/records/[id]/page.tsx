@@ -63,7 +63,7 @@ export default async function RecordWorkspacePage({ params }: RecordDetailProps)
     <div className="space-y-4 p-4">
       <div className="flex flex-wrap gap-4">
         <Link href="/data" className="text-xs text-[var(--accent)] underline">
-          ← Workspace
+          ← Results
         </Link>
       </div>
 

@@ -51,7 +51,7 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title={source.data.name} eyebrow="Source registry">
+      <Panel title={source.data.name} eyebrow="Source overview">
         <p className="text-xs">{source.data.compliance_notes ?? "No operator notes logged."}</p>
         <p className="mt-2 font-mono text-[11px] text-[var(--muted)]">{source.data.base_url}</p>
         <p className="mt-2 text-xs text-slate-700">
@@ -59,7 +59,7 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
         </p>
       </Panel>
 
-      <Panel title="Fetch strategy" eyebrow="Source-level mode + interaction config">
+      <Panel title="Extraction method" eyebrow="How this source is fetched and mapped">
         <form action={updateSourceFetchStrategy} className="space-y-3 text-xs">
           <input type="hidden" name="source_id" value={source.data.id} />
           <label className="block font-medium">
@@ -69,10 +69,10 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
               defaultValue={source.data.fetch_mode ?? "static_html"}
               className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5"
             >
-              <option value="static_html">static_html</option>
-              <option value="rendered_html">rendered_html (Playwright)</option>
-              <option value="discovered_api">discovered_api (render + endpoint capture)</option>
-              <option value="declared_api">declared_api endpoint</option>
+              <option value="static_html">Quick fetch (static HTML)</option>
+              <option value="rendered_html">Interactive fetch (rendered HTML)</option>
+              <option value="discovered_api">Find data sources (discover API)</option>
+              <option value="declared_api">Use known API endpoint</option>
             </select>
           </label>
           <label className="block font-medium">

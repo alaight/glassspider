@@ -64,18 +64,18 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
     () => [
       {
         key: "title",
-        header: "Title",
+        header: "Record",
         cell: (row) => (
           <div>
             <p className="font-semibold text-slate-900">{row.title}</p>
-            <p className="text-[var(--muted)]">{row.buyer_name ?? "—"}</p>
+            <p className="text-[var(--muted)]">{row.buyer_name ?? row.source_url ?? "—"}</p>
           </div>
         ),
       },
       {
         key: "counterparty",
-        header: "Counterparty",
-        cell: (row) => row.supplier_name ?? "—",
+        header: "Source / party",
+        cell: (row) => row.supplier_name ?? row.buyer_name ?? "—",
       },
       {
         key: "category",
@@ -111,7 +111,7 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="Extracted records"
+        title="Results"
         eyebrow={`${total ?? "?"} rows · keyword uses full‑text`}
         actions={
           <Link className="rounded border border-[var(--panel-border)] bg-white px-3 py-1 text-[11px] font-semibold" href="/api/dashboard/export">
@@ -155,7 +155,7 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
           </button>
         </form>
         <p className="mt-2 text-[11px] text-[var(--muted)]">
-          Keyword mode uses Postgres full‑text (`search_vector`). Click a wide row to hydrate the inspector rail.
+          Keyword mode uses Postgres full‑text (`search_vector`). Click a row to inspect extracted fields and raw capture.
         </p>
       </Panel>
 

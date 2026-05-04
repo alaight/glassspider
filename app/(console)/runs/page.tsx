@@ -10,7 +10,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function RunsConsolePage() {
+type RunsConsolePageProps = {
+  searchParams: Promise<{ source?: string; run_type?: string }>;
+};
+
+export default async function RunsConsolePage({ searchParams }: RunsConsolePageProps) {
   const access = await requireAdminAccess();
 
   if (access.status !== "granted") {
@@ -31,21 +35,22 @@ export default async function RunsConsolePage() {
     );
   }
 
-  const [sources, jobs, runs] = await Promise.all([listSources(supabase), listJobs(supabase), listRuns(supabase)]);
+  const [sources, jobs, runs, params] = await Promise.all([listSources(supabase), listJobs(supabase), listRuns(supabase), searchParams]);
+  const defaultSourceId = sources.data.some((source) => source.id === params.source) ? params.source : sources.data[0]?.id;
+  const defaultRunType = params.run_type === "crawl" || params.run_type === "classify" ? params.run_type : "scrape";
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title="Runs / jobs" eyebrow="Start work & watch failures">
+      <Panel title="Run extraction" eyebrow="Run">
         <div className="space-y-3 text-xs leading-relaxed text-slate-700">
           <p>
-            This panel <strong className="font-semibold text-slate-900">enqueues backend jobs</strong> (crawl, extract/scrape, classify) executed by workers. The
-            right-hand timeline lists jobs/runs plus payload and result excerpts—ideal for diagnosing why a crawl never produced URLs or extract failed midway.
+            Start extraction jobs and monitor completion. Each run feeds records into Results.
           </p>
           <div>
-            <p className="font-semibold text-slate-900">Order of operations</p>
+            <p className="font-semibold text-slate-900">Workflow reminders</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
-              <li>Crawl discovers URLs → inspect them in URL map.</li>
-              <li>Extract pulls structured fields → surfaced under Data and per-record inspectors.</li>
+              <li>Crawl discovers URLs for crawl-based sources → inspect in Scope.</li>
+              <li>Extract pulls structured fields → surfaced under Results and per-record inspectors.</li>
               <li>Classify assigns review/metadata using the backlog filters exposed in the form.</li>
             </ul>
           </div>
@@ -60,7 +65,7 @@ export default async function RunsConsolePage() {
           <form action={startSourceRun} className="space-y-3 text-xs">
             <label className="block font-medium">
               Source
-              <select name="source_id" required className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5">
+              <select name="source_id" required defaultValue={defaultSourceId} className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5">
                 {sources.data.map((source) => (
                   <option key={source.id} value={source.id}>
                     {source.name}
@@ -71,7 +76,7 @@ export default async function RunsConsolePage() {
 
             <label className="block font-medium">
               Job type
-              <select name="run_type" className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5">
+              <select name="run_type" defaultValue={defaultRunType} className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5">
                 <option value="crawl">Crawl • discover URLs</option>
                 <option value="scrape">Extract • hydrate records</option>
                 <option value="classify">Classify • labelling</option>
