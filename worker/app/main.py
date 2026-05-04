@@ -13,6 +13,7 @@ from app.models import DebugFetchRequest, DebugRenderedFetchRequest, EnqueueRequ
 from app.pipeline.classify.runner import run_classify_job
 from app.pipeline.crawl.runner import run_crawl_job
 from app.pipeline.fetchers import fetch_with_mode
+from app.pipeline.fetchers.rendered import RenderedFetchError
 from app.pipeline.scrape.runner import run_scrape_job
 from app.scheduler import enqueue_due_crawl_jobs, scheduler_loop
 
@@ -134,6 +135,8 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
     settings = get_settings()
     rendered_config = request.rendered.model_dump(exclude_none=True)
     source_config = {"rendered": rendered_config}
+    started = asyncio.get_running_loop().time()
+    stage = "start"
 
     try:
         async with httpx.AsyncClient(
@@ -141,13 +144,41 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
             timeout=45,
             follow_redirects=True,
         ) as client:
-            result = await fetch_with_mode(
-                mode="rendered",
-                url=request.url,
-                client=client,
-                user_agent=settings.glassspider_worker_user_agent,
-                source_config=source_config,
+            stage = "rendered_fetch"
+            result = await asyncio.wait_for(
+                fetch_with_mode(
+                    mode="rendered",
+                    url=request.url,
+                    client=client,
+                    user_agent=settings.glassspider_worker_user_agent,
+                    source_config=source_config,
+                ),
+                timeout=45,
             )
+    except asyncio.TimeoutError:
+        elapsed_ms = int((asyncio.get_running_loop().time() - started) * 1000)
+        return {
+            "ok": False,
+            "error": "Rendered fetch timed out",
+            "stage": stage,
+            "elapsed_ms": elapsed_ms,
+            "partial": {
+                "title": None,
+                "current_url": request.url,
+                "buttons": [],
+                "text_preview": "",
+                "anchors_count": 0,
+                "network_requests_count": 0,
+            },
+        }
+    except RenderedFetchError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "stage": exc.stage,
+            "elapsed_ms": exc.elapsed_ms,
+            "partial": exc.partial,
+        }
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Rendered fetch failed: {exc}") from exc
 
@@ -178,3 +209,12 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
         "metadata": result.metadata,
         "config_echo": rendered_config,
     }
+
+
+@app.get("/debug/routes", dependencies=[Depends(require_debug_token)])
+async def debug_routes() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for route in app.routes:
+        methods = sorted([method for method in getattr(route, "methods", set()) if method != "HEAD"])
+        rows.append({"path": route.path, "methods": methods})
+    return sorted(rows, key=lambda row: str(row["path"]))

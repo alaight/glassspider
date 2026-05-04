@@ -93,10 +93,12 @@ async function fetchRenderedViaWorker(url: string, sourceConfig: Record<string, 
   })();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45_000);
+  const startedAt = Date.now();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const endpoint = new URL("/debug/fetch-rendered", workerBaseUrl).toString();
 
   try {
-    const response = await fetch(`${workerBaseUrl.replace(/\/$/, "")}/debug/fetch-rendered`, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -110,16 +112,46 @@ async function fetchRenderedViaWorker(url: string, sourceConfig: Record<string, 
     });
 
     const payload = await response.json();
-    if (!response.ok) {
+    if (payload?.ok === false) {
       return {
         ok: false,
-        status: response.status,
-        error: payload?.detail ?? payload?.error ?? "Worker debug fetch failed.",
+        status: 502,
+        error: payload?.error ?? "Worker rendered fetch failed.",
+        endpoint,
         payload,
       } as const;
     }
 
-    return { ok: true, payload } as const;
+    if (!response.ok) {
+      const mappedError =
+        response.status === 404
+          ? "Worker reached, but rendered fetch endpoint was not found. Check that POST /debug/fetch-rendered is registered and the Fly worker was redeployed."
+          : response.status === 401 || response.status === 403
+            ? "Worker rejected the debug token. Check GLASSSPIDER_WORKER_DEBUG_TOKEN matches in Vercel and Fly."
+            : response.status === 503
+              ? "Worker debug token is not configured on Fly. Set GLASSSPIDER_WORKER_DEBUG_TOKEN and redeploy."
+              : payload?.detail ?? payload?.error ?? "Worker debug fetch failed.";
+      return {
+        ok: false,
+        status: response.status,
+        error: mappedError,
+        endpoint,
+        payload,
+      } as const;
+    }
+
+    return { ok: true, payload, endpoint } as const;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        ok: false,
+        status: 504,
+        error: "Request timed out.",
+        endpoint,
+        payload: { elapsed_ms: Date.now() - startedAt },
+      } as const;
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -187,9 +219,10 @@ export async function POST(request: Request) {
           error: workerResult.error,
           workerStatus: "error",
           workerStatusCode: workerResult.status,
+          workerEndpoint: workerResult.endpoint,
           workerPayload: workerResult.payload,
         },
-        { status: workerResult.status === 401 ? 502 : workerResult.status === 403 ? 502 : 502 },
+        { status: workerResult.status },
       );
     }
 
@@ -226,6 +259,7 @@ export async function POST(request: Request) {
       renderedLinks: workerLinks,
       diagnostics: {
         workerConnectionStatus: "connected",
+        workerEndpoint: workerResult.endpoint,
         renderedConfigSent: workerPayload.config_echo ?? sourceConfig,
         buttonsDetected: workerPayload.buttons_detected ?? [],
         contentType: "text/html",

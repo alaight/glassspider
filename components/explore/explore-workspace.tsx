@@ -22,6 +22,7 @@ type ExploreResponse = {
   renderedLinks?: Array<{ href: string; absoluteUrl: string; label: string }>;
   diagnostics?: {
     workerConnectionStatus?: string;
+    workerEndpoint?: string;
     renderedConfigSent?: Record<string, unknown>;
     buttonsDetected?: string[];
     contentType?: string | null;
@@ -47,20 +48,24 @@ export function ExploreWorkspace() {
   const defaultRenderedPreset = `{
   "steps": [
     {
+      "type": "wait_for_timeout",
+      "milliseconds": 2000
+    },
+    {
       "type": "click",
-      "selector": "button:has-text('Apply filters')"
+      "selector": "button:has-text('Apply filters')",
+      "timeout_ms": 8000,
+      "optional": true
     },
     {
       "type": "wait_for_timeout",
-      "milliseconds": 3000
-    },
-    {
-      "type": "wait_for_network_idle"
+      "milliseconds": 5000
     }
   ],
   "capture_buttons": true,
   "capture_network": true,
-  "capture_anchors": true
+  "capture_anchors": true,
+  "wait_until": "domcontentloaded"
 }`;
   const [sourceConfigJson, setSourceConfigJson] = useState(defaultRenderedPreset);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +98,10 @@ export function ExploreWorkspace() {
         const payload = await response.json();
 
         if (!response.ok || payload?.ok === false) {
-          setError(payload?.error ?? "Request failed.");
+          const stage = payload?.workerPayload?.stage ?? payload?.stage;
+          const elapsedMs = payload?.workerPayload?.elapsed_ms ?? payload?.elapsed_ms ?? payload?.workerPayload?.partial?.elapsed_ms;
+          const details = [stage ? `stage=${stage}` : null, elapsedMs ? `elapsed=${elapsedMs}ms` : null].filter(Boolean).join(" · ");
+          setError(`${payload?.error ?? "Request failed."}${details ? ` (${details})` : ""}`);
           setResult(null);
           return;
         }
@@ -295,14 +303,23 @@ export function ExploreWorkspace() {
               {result.diagnostics?.contentType ?? "n/a"} · Requests captured: {result.diagnostics?.detectedRequests?.length ?? 0} · JSON endpoint candidates:{" "}
               {result.diagnostics?.jsonEndpoints?.length ?? 0} · Rendered HTML bytes: {result.diagnostics?.renderedHtmlLength ?? 0}
             </p>
+            {result.diagnostics?.workerEndpoint ? (
+              <p className="text-[var(--muted)]">
+                Worker endpoint: <span className="font-mono">{result.diagnostics.workerEndpoint}</span>
+              </p>
+            ) : null}
+            {result.diagnostics?.staticBaseline ? (
+              <p className="text-[var(--muted)]">
+                Static baseline: HTTP {result.diagnostics.staticBaseline.statusCode} · {result.diagnostics.staticBaseline.linksCount} links from{" "}
+                <span className="font-mono">{result.diagnostics.staticBaseline.resolvedUrl}</span>
+              </p>
+            ) : null}
             <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
               <p className="mb-1 font-semibold text-slate-800">Rendered fetch config sent</p>
               <pre className="max-h-52 overflow-auto text-[10px] text-slate-700">
                 {JSON.stringify(result.diagnostics?.renderedConfigSent ?? {}, null, 2)}
               </pre>
             </div>
-            {result.diagnostics?.staticBaseline ? (
-              <p className="text-[var(--muted)]">
             {result.diagnostics?.buttonsDetected?.length ? (
               <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
                 <p className="mb-1 font-semibold text-slate-800">Buttons detected</p>
@@ -318,10 +335,6 @@ export function ExploreWorkspace() {
                   {JSON.stringify(result.diagnostics.warnings, null, 2)}
                 </pre>
               </div>
-            ) : null}
-                Static baseline: HTTP {result.diagnostics.staticBaseline.statusCode} · {result.diagnostics.staticBaseline.linksCount} links from{" "}
-                <span className="font-mono">{result.diagnostics.staticBaseline.resolvedUrl}</span>
-              </p>
             ) : null}
             {result.diagnostics?.jsonEndpoints?.length ? (
               <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
