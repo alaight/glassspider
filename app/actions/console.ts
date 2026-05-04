@@ -16,6 +16,8 @@ const sourceSchema = z.object({
   base_url: z.string().url(),
   entry_urls: z.string().min(1),
   status: z.enum(["active", "paused", "draft"]),
+  fetch_mode: z.enum(["static", "rendered", "api"]).default("static"),
+  fetch_config_json: z.string().optional(),
   crawl_frequency: z.string().optional(),
   scrape_frequency: z.string().optional(),
   compliance_notes: z.string().optional(),
@@ -42,6 +44,29 @@ const tupleSchema = z.object({
   sourceId: z.string().uuid(),
   urlId: z.string().uuid(),
 });
+
+const sourceFetchSchema = z.object({
+  source_id: z.string().uuid(),
+  fetch_mode: z.enum(["static", "rendered", "api"]),
+  fetch_config_json: z.string().optional(),
+});
+
+function parseFetchConfigJson(value?: string) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Fetch config must be a JSON object.");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "Invalid JSON in fetch config.");
+  }
+}
 
 function revalidateConsole() {
   const paths = ["/sources", "/url-map", "/runs", "/data", "/records", "/explore", "/admin", "/dashboard"];
@@ -80,9 +105,13 @@ export async function createSource(formData: FormData) {
     .map((url) => url.trim())
     .filter(Boolean);
 
+  const { fetch_config_json, ...sourceFields } = parsed.data;
+
   const { error } = await supabase.from("glassspider_sources").insert({
-    ...parsed.data,
+    ...sourceFields,
     entry_urls: entryUrls,
+    fetch_mode: parsed.data.fetch_mode,
+    fetch_config: parseFetchConfigJson(fetch_config_json),
     crawl_frequency: parsed.data.crawl_frequency || null,
     scrape_frequency: parsed.data.scrape_frequency || null,
     compliance_notes: parsed.data.compliance_notes || null,
@@ -93,6 +122,44 @@ export async function createSource(formData: FormData) {
   }
 
   revalidateConsole();
+}
+
+export async function updateSourceFetchStrategy(formData: FormData) {
+  const access = await requireAdminAccess();
+
+  if (access.status !== "granted") {
+    throw new Error(access.message ?? "Admin access required.");
+  }
+
+  const parsed = sourceFetchSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    throw new Error("Choose a valid fetch mode and source.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const fetchConfig = parseFetchConfigJson(parsed.data.fetch_config_json);
+
+  const { error } = await supabase
+    .from("glassspider_sources")
+    .update({
+      fetch_mode: parsed.data.fetch_mode,
+      fetch_config: fetchConfig,
+    })
+    .eq("id", parsed.data.source_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/sources/${parsed.data.source_id}`);
+  revalidatePath("/sources");
+  revalidatePath("/runs");
 }
 
 export async function createSourceRule(formData: FormData) {

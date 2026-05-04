@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from collections import deque
 from datetime import UTC, datetime
 from typing import Any
@@ -10,7 +11,9 @@ from supabase import Client
 from app.config import get_settings
 from app.models import Job
 from app.pipeline.crawl.url_rules import classify_url, matched_rule_label, normalise_url, should_visit_url
+from app.pipeline.fetchers import fetch_with_mode, resolve_fetch_config, resolve_fetch_mode
 
+logger = logging.getLogger(__name__)
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -37,6 +40,8 @@ async def run_crawl_job(db: Client, job: Job) -> dict[str, Any]:
     )
     entry_urls = job.payload.get("entry_urls") or source.get("entry_urls") or []
     max_pages = int(job.payload.get("max_pages") or 25)
+    fetch_mode = resolve_fetch_mode(source, job.payload)
+    fetch_config = resolve_fetch_config(source, job.payload)
 
     if not entry_urls:
         raise ValueError("Crawl job requires entry_urls in payload or source configuration.")
@@ -60,11 +65,17 @@ async def run_crawl_job(db: Client, job: Job) -> dict[str, Any]:
             visited.add(next_url)
 
             try:
-                response = await client.get(next_url)
-                html = response.text
+                result = await fetch_with_mode(
+                    mode=fetch_mode,
+                    url=next_url,
+                    client=client,
+                    user_agent=settings.glassspider_worker_user_agent,
+                    source_config=fetch_config,
+                )
+                html = result.html or result.text or ""
                 content_hash = hashlib.sha256(html.encode("utf-8")).hexdigest()
                 soup = BeautifulSoup(html, "html.parser")
-                status_value = "queued" if response.is_success else "failed"
+                status_value = "queued" if (result.status_code or 0) < 400 else "failed"
 
                 db.table("glassspider_discovered_urls").upsert(
                     {
@@ -75,7 +86,7 @@ async def run_crawl_job(db: Client, job: Job) -> dict[str, Any]:
                         "status": status_value,
                         "parent_url": parent_url,
                         "crawl_depth": depth,
-                        "http_status": response.status_code,
+                        "http_status": result.status_code,
                         "content_hash": content_hash,
                         "matched_rule": matched_rule_label(next_url, rules),
                         "last_seen_at": _now(),
@@ -95,7 +106,25 @@ async def run_crawl_job(db: Client, job: Job) -> dict[str, Any]:
 
                     discovered.add(normalised)
                     queue.append((normalised, next_url, depth + 1))
+
+                if result.json_data is not None:
+                    for url_candidate in _discover_urls_from_json(result.json_data, source["base_url"]):
+                        if url_candidate in visited or url_candidate in discovered:
+                            continue
+                        if not url_candidate.startswith(source["base_url"]) or not should_visit_url(url_candidate, rules):
+                            continue
+                        discovered.add(url_candidate)
+                        queue.append((url_candidate, next_url, depth + 1))
+
+                logger.info(
+                    "Crawl fetched url=%s mode=%s status=%s discovered_requests=%s",
+                    next_url,
+                    fetch_mode,
+                    result.status_code,
+                    len(result.discovered_requests),
+                )
             except Exception as exc:
+                logger.warning("Crawl fetch failed url=%s mode=%s error=%s", next_url, fetch_mode, exc)
                 db.table("glassspider_discovered_urls").upsert(
                     {
                         "source_id": job.source_id,
@@ -118,4 +147,40 @@ async def run_crawl_job(db: Client, job: Job) -> dict[str, Any]:
     return {
         "pages_visited": len(visited),
         "urls_discovered": len(discovered),
+        "fetch_mode": fetch_mode,
     }
+
+
+def _discover_urls_from_json(data: Any, base_url: str) -> set[str]:
+    discovered: set[str] = set()
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for nested in value.values():
+                walk(nested)
+            return
+        if isinstance(value, list):
+            for nested in value:
+                walk(nested)
+            return
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("http://") or text.startswith("https://"):
+                normalised = normalise_url(text, base_url)
+                if normalised:
+                    discovered.add(normalised)
+                return
+            if text.startswith("/"):
+                normalised = normalise_url(text, base_url)
+                if normalised:
+                    discovered.add(normalised)
+                return
+            if "http" in text:
+                for token in text.split():
+                    if token.startswith("http://") or token.startswith("https://"):
+                        normalised = normalise_url(token.strip(" ,;"), base_url)
+                        if normalised:
+                            discovered.add(normalised)
+
+    walk(data)
+    return discovered

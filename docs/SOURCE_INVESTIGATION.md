@@ -49,3 +49,18 @@ The code includes draft BidStats source seeds in both control-plane and worker l
 - Public Contracts Scotland
 
 Each source needs a similar robots/terms and URL-structure review before adding active crawler rules.
+
+## Manual smoke checks (fetch strategies)
+
+1. **Static BidStats regression**
+   - Keep BidStats source `fetch_mode = static`.
+   - Queue `crawl` then `scrape` from `/runs`.
+   - Confirm URL map rows and extracted records still populate without rendered configuration.
+2. **Rendered JS listing check**
+   - Configure a source with `fetch_mode = rendered` and `fetch_config.rendered.steps` (for example click + wait for selector).
+   - Queue a crawl and verify discovered URL count increases relative to static baseline.
+   - Inspect run/job payload + result for rendered diagnostics and request discovery counts.
+3. **Explore diagnostics check**
+   - Open `/explore`, run once with `static`, then with `rendered` and the same interaction JSON.
+   - Compare `Initial anchors` vs `Rendered/API anchors`.
+   - Confirm request capture and JSON endpoint candidates appear in diagnostics.

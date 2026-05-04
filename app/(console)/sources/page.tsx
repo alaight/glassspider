@@ -112,6 +112,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                   <span className="font-semibold">{source.name}</span>
                   <span className="text-[11px] uppercase text-[var(--muted)]">{source.status}</span>
                 </div>
+                <p className="text-[11px] uppercase text-[var(--muted)]">Fetch mode: {source.fetch_mode ?? "static"}</p>
                 <p className="text-xs text-[var(--muted)]">{source.base_url}</p>
               </Link>
             ))}
@@ -142,6 +143,23 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
             <label className="block font-medium">
               Entry URLs <span className="text-[var(--muted)]">(one per line)</span>
               <textarea defaultValue={search.prefillUrl ?? ""} name="entry_urls" rows={4} className="mt-1 w-full rounded border border-[var(--panel-border)] px-2 py-1.5 font-mono" required />
+            </label>
+            <label className="block font-medium">
+              Fetch mode
+              <select defaultValue="static" name="fetch_mode" className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5">
+                <option value="static">static (HTTP HTML)</option>
+                <option value="rendered">rendered (Playwright)</option>
+                <option value="api">api (direct JSON/API endpoint)</option>
+              </select>
+            </label>
+            <label className="block font-medium">
+              Fetch config JSON <span className="text-[var(--muted)]">(optional)</span>
+              <textarea
+                name="fetch_config_json"
+                rows={6}
+                className="mt-1 w-full rounded border border-[var(--panel-border)] px-2 py-1.5 font-mono text-[11px]"
+                placeholder='{"rendered":{"wait_until":"networkidle","wait_for_selector":".product-card","steps":[{"type":"click","selector":"button:has-text(\"Apply filters\")"},{"type":"wait_for_selector","selector":".product-card"}]},"api":{"endpoint":null,"method":"GET","headers":{},"payload":null}}'
+              />
             </label>
             <label className="block font-medium">
               Status

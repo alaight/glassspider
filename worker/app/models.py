@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 JobType = Literal["crawl", "scrape", "classify"]
 JobStatus = Literal["pending", "running", "completed", "failed"]
+FetchMode = Literal["static", "rendered", "api"]
 
 
 class Job(BaseModel):
@@ -30,3 +31,9 @@ class EnqueueRequest(BaseModel):
     source_id: str
     payload: dict[str, Any] = Field(default_factory=dict)
     max_attempts: int = 3
+
+
+class DebugFetchRequest(BaseModel):
+    url: str
+    mode: FetchMode = "static"
+    source_config: dict[str, Any] = Field(default_factory=dict)

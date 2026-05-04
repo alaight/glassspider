@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 type ExploreResponse = {
+  mode: "static" | "rendered" | "api";
   requestedUrl: string;
   resolvedUrl: string;
   statusCode: number;
@@ -16,11 +17,28 @@ type ExploreResponse = {
   links: Array<{ href: string; absoluteUrl: string; label: string }>;
   grouped: Array<{ pattern: string; items: Array<{ href: string; absoluteUrl: string; label: string }> }>;
   sanitisedHtml: string;
+  initialLinks?: Array<{ href: string; absoluteUrl: string; label: string }>;
+  renderedLinks?: Array<{ href: string; absoluteUrl: string; label: string }>;
+  diagnostics?: {
+    contentType?: string | null;
+    detectedRequests?: Array<Record<string, unknown>>;
+    jsonEndpoints?: Array<Record<string, unknown>>;
+    metadata?: Record<string, unknown>;
+    renderedTextPreview?: string;
+    staticBaseline?: {
+      resolvedUrl: string;
+      statusCode: number;
+      title: string | null;
+      linksCount: number;
+    } | null;
+  };
 };
 
 export function ExploreWorkspace() {
   const router = useRouter();
   const [url, setUrl] = useState("https://");
+  const [mode, setMode] = useState<"static" | "rendered" | "api">("static");
+  const [sourceConfigJson, setSourceConfigJson] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ExploreResponse | null>(null);
   const [pending, startTransition] = useTransition();
@@ -33,10 +51,20 @@ export function ExploreWorkspace() {
     setResult(null);
     startTransition(async () => {
       try {
+        let sourceConfig: Record<string, unknown> | undefined;
+        if (sourceConfigJson.trim()) {
+          const parsed = JSON.parse(sourceConfigJson) as unknown;
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            setError("Source config must be a JSON object.");
+            return;
+          }
+          sourceConfig = parsed as Record<string, unknown>;
+        }
+
         const response = await fetch("/api/explore/fetch", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url }),
+          body: JSON.stringify({ url, mode, sourceConfig }),
         });
         const payload = await response.json();
 
@@ -52,7 +80,7 @@ export function ExploreWorkspace() {
         setResult(null);
       }
     });
-  }, [url]);
+  }, [mode, sourceConfigJson, url]);
 
   function suggestPattern(kind: "listing" | "detail") {
     if (!result?.resolvedUrl) {
@@ -120,17 +148,45 @@ export function ExploreWorkspace() {
               spellCheck={false}
             />
           </label>
+          <label className="w-[220px] text-xs font-medium">
+            Fetch mode
+            <select
+              value={mode}
+              onChange={(event) => setMode(event.target.value as "static" | "rendered" | "api")}
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-3 py-2 text-sm"
+            >
+              <option value="static">static</option>
+              <option value="rendered">rendered (Playwright)</option>
+              <option value="api">api (direct endpoint)</option>
+            </select>
+          </label>
+          <label className="w-full text-xs font-medium">
+            Optional source config JSON
+            <textarea
+              value={sourceConfigJson}
+              onChange={(event) => setSourceConfigJson(event.target.value)}
+              rows={4}
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-3 py-2 font-mono text-[11px]"
+              placeholder='{"rendered":{"wait_until":"networkidle","steps":[{"type":"click","selector":"button:has-text(\"Apply filters\")"},{"type":"wait_for_selector","selector":".product-card"}]}}'
+            />
+          </label>
         </div>
         {error ? <p className="mt-3 text-xs text-red-700">{error}</p> : null}
         {result ? (
           <p className="mt-3 text-xs text-[var(--muted)]">
-            Resolved <span className="font-mono">{result.resolvedUrl}</span> · HTTP {result.statusCode}
+            {result.mode.toUpperCase()} · Resolved <span className="font-mono">{result.resolvedUrl}</span> · HTTP {result.statusCode}
             {result.title ? (
               <>
                 {" "}
                 · <span className="text-slate-800">{result.title}</span>
               </>
             ) : null}
+          </p>
+        ) : null}
+        {result ? (
+          <p className="mt-1 text-[11px] text-[var(--muted)]">
+            Initial anchors: {result.initialLinks?.length ?? result.links.length} · Rendered/API anchors: {result.renderedLinks?.length ?? result.links.length} ·
+            network requests: {result.diagnostics?.detectedRequests?.length ?? 0}
           </p>
         ) : null}
       </Panel>
@@ -197,6 +253,45 @@ export function ExploreWorkspace() {
             </div>
           </Panel>
         </div>
+      ) : null}
+
+      {result ? (
+        <Panel title="Diagnostics" eyebrow="Rendered/API telemetry">
+          <div className="space-y-3 text-xs">
+            <p className="text-[var(--muted)]">
+              Content type: {result.diagnostics?.contentType ?? "n/a"} · Requests captured: {result.diagnostics?.detectedRequests?.length ?? 0} · JSON endpoint candidates:{" "}
+              {result.diagnostics?.jsonEndpoints?.length ?? 0}
+            </p>
+            {result.diagnostics?.staticBaseline ? (
+              <p className="text-[var(--muted)]">
+                Static baseline: HTTP {result.diagnostics.staticBaseline.statusCode} · {result.diagnostics.staticBaseline.linksCount} links from{" "}
+                <span className="font-mono">{result.diagnostics.staticBaseline.resolvedUrl}</span>
+              </p>
+            ) : null}
+            {result.diagnostics?.jsonEndpoints?.length ? (
+              <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
+                <p className="mb-1 font-semibold text-slate-800">JSON endpoint candidates</p>
+                <pre className="max-h-52 overflow-auto text-[10px] text-slate-700">
+                  {JSON.stringify(result.diagnostics.jsonEndpoints.slice(0, 12), null, 2)}
+                </pre>
+              </div>
+            ) : null}
+            {result.diagnostics?.detectedRequests?.length ? (
+              <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
+                <p className="mb-1 font-semibold text-slate-800">Captured XHR/fetch requests</p>
+                <pre className="max-h-52 overflow-auto text-[10px] text-slate-700">
+                  {JSON.stringify(result.diagnostics.detectedRequests.slice(0, 20), null, 2)}
+                </pre>
+              </div>
+            ) : null}
+            {result.diagnostics?.renderedTextPreview ? (
+              <div className="rounded border border-[var(--panel-border)] bg-white p-2">
+                <p className="mb-1 font-semibold text-slate-800">Rendered text preview</p>
+                <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-[11px] text-slate-700">{result.diagnostics.renderedTextPreview}</pre>
+              </div>
+            ) : null}
+          </div>
+        </Panel>
       ) : null}
     </div>
   );

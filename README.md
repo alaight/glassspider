@@ -10,6 +10,7 @@ Glassspider is an operational crawl/extract/classify pipeline with a Next.js **c
 - **All granted product users** can browse normalised **`glassspider_bid_records`**, filter (including full‑text keyword search), inspect raw capture and classifications where present, and export CSV.
 - Supabase holds configuration, the URL map, raw/canonical rows, classifications, and **`glassspider_jobs`**.
 - A Python worker on Fly.io owns crawl/scrape/classify execution using the **service-role** key.
+- Sources declare a fetch strategy (`static`, `rendered`, or `api`) with optional JSON config (`fetch_config`) so JavaScript-heavy listing/filter pages can be handled without changing the pipeline stage model.
 - Canonical routes: **`/explore`** · **`/sources`** (+ `/sources/[id]`) · **`/url-map`** · **`/runs`** · **`/data`** · **`/records/[id]`**. **`/`** sends admins to `/explore`, others to `/data`. **`/admin/*`** and **`/dashboard/*`** redirect to these paths.
 
 ## Database
@@ -37,6 +38,8 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 NEXT_PUBLIC_LAIGHTWORKS_LOGIN_URL=https://laightworks.com/login
 GLASSSPIDER_PROJECT_SLUG=glassspider
 GLASSSPIDER_ADMIN_ROLES=owner,admin
+GLASSSPIDER_WORKER_INTERNAL_URL=
+GLASSSPIDER_WORKER_SECRET=
 ```
 
 **Shared Laightworks sign-in (`*.laightworks.com`):** set `SUPABASE_AUTH_COOKIE_DOMAIN=laightworks.com` on **both** this app **and** the Laightworks hub’s Next.js/SSR Supabase clients with the **same** value (`domain` cookie option after login/refreshes). Omit locally unless you intentionally test SSO on a deployed host group. Hub-only apex cookies cannot be read by `glaspspider.laightworks.com`; without shared domain scope users look “logged in” on laightworks.com but Glassspider still redirects to `/login`.
@@ -73,4 +76,5 @@ Worker checks:
 
 ```bash
 python -m compileall worker/app
+python -m unittest discover worker/tests
 ```

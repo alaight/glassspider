@@ -1,7 +1,7 @@
 import { AccessPanel } from "@/components/access-panel";
 import { Panel } from "@/components/ui/panel";
 import { ConsoleButton } from "@/components/ui/button-group";
-import { createSourceRule } from "@/app/actions/console";
+import { createSourceRule, updateSourceFetchStrategy } from "@/app/actions/console";
 import { requireAdminAccess } from "@/lib/auth";
 import { getSource, listSourceRules } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -54,6 +54,42 @@ export default async function SourceDetailPage({ params, searchParams }: SourceD
       <Panel title={source.data.name} eyebrow="Source registry">
         <p className="text-xs">{source.data.compliance_notes ?? "No operator notes logged."}</p>
         <p className="mt-2 font-mono text-[11px] text-[var(--muted)]">{source.data.base_url}</p>
+        <p className="mt-2 text-xs text-slate-700">
+          Fetch mode: <span className="font-semibold">{source.data.fetch_mode ?? "static"}</span>
+        </p>
+      </Panel>
+
+      <Panel title="Fetch strategy" eyebrow="Source-level mode + interaction config">
+        <form action={updateSourceFetchStrategy} className="space-y-3 text-xs">
+          <input type="hidden" name="source_id" value={source.data.id} />
+          <label className="block font-medium">
+            Mode
+            <select
+              name="fetch_mode"
+              defaultValue={source.data.fetch_mode ?? "static"}
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-white px-2 py-1.5"
+            >
+              <option value="static">static</option>
+              <option value="rendered">rendered (Playwright)</option>
+              <option value="api">api endpoint</option>
+            </select>
+          </label>
+          <label className="block font-medium">
+            Fetch config JSON
+            <textarea
+              name="fetch_config_json"
+              rows={8}
+              defaultValue={JSON.stringify(source.data.fetch_config ?? {}, null, 2)}
+              className="mt-1 w-full rounded border border-[var(--panel-border)] px-2 py-1.5 font-mono text-[11px]"
+            />
+          </label>
+          <p className="text-[11px] text-[var(--muted)]">
+            Supports rendered steps: click, fill, select, wait_for_selector, wait_for_timeout, wait_for_network_idle.
+          </p>
+          <ConsoleButton variant="primary" type="submit">
+            Save fetch strategy
+          </ConsoleButton>
+        </form>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.85fr]">

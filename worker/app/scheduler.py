@@ -61,6 +61,8 @@ def enqueue_due_crawl_jobs(db: Client) -> list[str]:
                 payload={
                     "entry_urls": source.get("entry_urls") or [],
                     "max_pages": 25,
+                    "fetch_mode": source.get("fetch_mode") or "static",
+                    "fetch_config": source.get("fetch_config") or {},
                     "scheduled_by": "worker-scheduler",
                 },
             ),

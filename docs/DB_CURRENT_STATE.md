@@ -10,6 +10,7 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
   - Seeds the canonical `projects.slug = 'glassspider'` row used by product access checks.
 - Initial schema: `supabase/migrations/20260426000000_glassspider_bid_intelligence_initial_schema.sql`
 - Job queue schema: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`
+- Source fetch strategy schema: `supabase/migrations/20260504090000_glassspider_source_fetch_modes.sql`
 - The local Supabase CLI was not available when the migrations were created. Validate the migrations against the live shared schema before applying them.
 
 ## Shared Ecosystem Tables
@@ -19,7 +20,9 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 
 ## Product Tables
 
-- `glassspider_sources`: source registry with base URL, entry URLs, status, crawl/scrape cadence, and compliance notes.
+- `glassspider_sources`: source registry with base URL, entry URLs, status, crawl/scrape cadence, compliance notes, and fetch strategy fields:
+  - `fetch_mode` (`static` | `rendered` | `api`; defaults to `static`)
+  - `fetch_config` (`jsonb`) for rendered wait/click/step configuration and API endpoint/method/header/payload overrides.
 - `glassspider_source_rules`: configurable include, exclude, listing, and detail URL patterns.
 - `glassspider_runs`: crawl/scrape/classification run history, counts, errors, and metadata.
 - `glassspider_discovered_urls`: stored URL map with source, type, crawl status, parent URL, matched rule, and content hash.

@@ -1,6 +1,6 @@
 # Current state — glassspider
 
-**Last updated:** 2026-05-03
+**Last updated:** 2026-05-04
 
 ## Repository
 
@@ -17,8 +17,8 @@
 - Stack: Next.js App Router, TypeScript, Tailwind CSS, Supabase SSR.
 - **Primary UI:** single **console shell** (`app/(console)/`): sidebar + main + inspector rail. Copy is intentionally operational (records/items), not a landing site.
 - **Routes (canonical):**
-  - **`/explore`** (admin): ad-hoc URL fetch + anchors + iframe preview (`POST /api/explore/fetch`); deep-links into Sources with draft/suggested-rule query params.
-  - **`/sources`**, **`/sources/[id]`** (admin): registry, crawler rules, BidStats seed.
+  - **`/explore`** (admin): ad-hoc URL fetch diagnostics with selectable fetch mode (`static` / `rendered` / `api`), static-vs-rendered anchor comparison, request discovery, JSON endpoint candidates, and iframe preview (`POST /api/explore/fetch`).
+  - **`/sources`**, **`/sources/[id]`** (admin): registry, crawler rules, BidStats seed, and per-source fetch strategy (`fetch_mode`, `fetch_config` JSON with rendered/API options including interaction steps).
   - **`/url-map`** (admin): filtered/paged **`glassspider_discovered_urls`**, selection, batch scrape enqueue, optional row tagging (**UPDATE** may be blocked by RLS — see **`docs/DB_CURRENT_STATE.md`**).
   - **`/runs`** (admin): enqueue jobs; **`GET /api/console/jobs`** polling (~5 s); expandable payload/result; retry failed jobs.
   - **`/data`** (viewer+): filtered record explorer; keyword mode uses FTS on **`glassspider_bid_records.search_vector`**; inspector uses **`GET /api/console/records/[id]`** (canonical + raw + classifications).
@@ -45,7 +45,7 @@ flowchart TD
 
 - Next.js/Vercel is the control plane: auth, source/rule configuration, job enqueueing, **operator console** (Explore / Sources / URL map / Runs), **data explorer**, exports, and bounded Explore fetch endpoint.
 - Supabase is the system of record: source config, job queue, URL map, raw records, canonical records, classifications.
-- Python/Fly is the execution plane: atomic job claiming, crawl/scrape/classify execution, retries, backoff, and service-role writes.
+- Python/Fly is the execution plane: atomic job claiming, crawl/scrape/classify execution, retries, backoff, service-role writes, and fetch strategy dispatch (`static` / `rendered` / `api`) via `worker/app/pipeline/fetchers/`.
 - The web app does not use `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Worker runtime (Fly)
@@ -61,8 +61,8 @@ flowchart TD
 - Job queue state lives in `glassspider_jobs`.
 - Execution code lives under `worker/app/pipeline/`.
 - Pipeline stages:
-  - `crawl`: discovers URLs and stores `glassspider_discovered_urls`, then stops.
-  - `scrape`: runs only from explicit selected URL IDs or a filter payload and writes `glassspider_raw_records` / `glassspider_bid_records`.
+  - `crawl`: discovers URLs and stores `glassspider_discovered_urls`, then stops; fetching is routed through source `fetch_mode`.
+  - `scrape`: runs only from explicit selected URL IDs or a filter payload and writes `glassspider_raw_records` / `glassspider_bid_records`; fetching is routed through source `fetch_mode`.
   - `classify`: runs only from explicit selected records or a filter payload and writes `glassspider_classifications`.
 - No pipeline stage automatically enqueues another stage.
 - The worker scheduler only enqueues due crawl jobs by default.
@@ -75,6 +75,7 @@ flowchart TD
   - Seeds the canonical `projects.slug = 'glassspider'` registry row.
 - Initial migration: `supabase/migrations/20260426000000_glassspider_bid_intelligence_initial_schema.sql`.
 - Job queue migration: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`.
+- Source fetch strategy migration: `supabase/migrations/20260504090000_glassspider_source_fetch_modes.sql` (`fetch_mode`, `fetch_config`).
 - Database prose: `docs/DB_CURRENT_STATE.md`.
 - The local Supabase CLI was unavailable during migration creation, so validate migrations against the live shared schema before applying them.
 

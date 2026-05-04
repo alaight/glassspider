@@ -3,5 +3,6 @@ fastapi==0.115.6
 httpx==0.27.2
 pydantic==2.10.4
 pydantic-settings==2.7.1
+playwright
 supabase==2.10.0
 uvicorn==0.34.0

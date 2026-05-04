@@ -1,14 +1,18 @@
 import asyncio
 import logging
+from urllib.parse import urljoin, urlparse
 
+import httpx
+from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from app.config import get_settings
 from app.db import get_supabase
 from app.jobs import enqueue_job, worker_loop
-from app.models import EnqueueRequest
+from app.models import DebugFetchRequest, EnqueueRequest
 from app.pipeline.classify.runner import run_classify_job
 from app.pipeline.crawl.runner import run_crawl_job
+from app.pipeline.fetchers import fetch_with_mode
 from app.pipeline.scrape.runner import run_scrape_job
 from app.scheduler import enqueue_due_crawl_jobs, scheduler_loop
 
@@ -52,3 +56,59 @@ async def enqueue(request: EnqueueRequest) -> dict[str, str]:
 async def enqueue_due() -> dict[str, list[str]]:
     db = get_supabase()
     return {"job_ids": enqueue_due_crawl_jobs(db)}
+
+
+def _extract_links(html: str, base_url: str) -> list[dict[str, str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    links: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    for anchor in soup.select("a[href]"):
+        href = (anchor.get("href") or "").strip()
+        if not href:
+            continue
+        absolute = urljoin(base_url, href).split("#")[0]
+        parsed = urlparse(absolute)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        if absolute in seen:
+            continue
+        seen.add(absolute)
+        label = anchor.get_text(" ", strip=True)[:280] or absolute
+        links.append({"href": href, "absoluteUrl": absolute, "label": label})
+
+    return links
+
+
+@app.post("/debug/fetch", dependencies=[Depends(require_worker_secret)])
+async def debug_fetch(request: DebugFetchRequest) -> dict:
+    settings = get_settings()
+    async with httpx.AsyncClient(
+        headers={"user-agent": settings.glassspider_worker_user_agent},
+        timeout=30,
+        follow_redirects=True,
+    ) as client:
+        result = await fetch_with_mode(
+            mode=request.mode,
+            url=request.url,
+            client=client,
+            user_agent=settings.glassspider_worker_user_agent,
+            source_config=request.source_config,
+        )
+
+    html = result.html or ""
+    links = _extract_links(html, result.final_url or request.url) if html else []
+    json_endpoints = [
+        req
+        for req in result.discovered_requests
+        if "json" in (str(req.get("content_type") or "").lower()) or "/api/" in str(req.get("url") or "").lower()
+    ]
+
+    return {
+        "mode": request.mode,
+        "requested_url": request.url,
+        "result": result.to_json_ready(),
+        "title": result.metadata.get("title"),
+        "links": links,
+        "json_endpoints": json_endpoints[:25],
+    }

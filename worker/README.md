@@ -10,6 +10,7 @@ Python execution plane for Glassspider crawl, scrape, and classify jobs.
 - Write crawl/scrape/classify output into Supabase.
 - Record completion, failures, retry backoff, and last errors in the database.
 - Run an internal scheduler that enqueues due crawl jobs only.
+- Apply source-level fetch strategy (`static`, `rendered` via Playwright Chromium, or `api`) inside crawl/scrape handlers.
 
 The worker must not automatically chain stages. Scrape and classify jobs require explicit selected IDs or explicit filter payloads.
 
@@ -31,6 +32,7 @@ GLASSSPIDER_WORKER_USER_AGENT=GlassspiderBot/0.1 (+https://laightworks.com)
 
 ```bash
 pip install -r worker/requirements.txt
+python -m playwright install --with-deps chromium
 uvicorn app.main:app --app-dir worker --reload --port 8080
 ```
 
@@ -54,3 +56,4 @@ Keep at least one machine running so polling and the internal scheduler continue
 - **Started:** logs that the worker loop started with `worker_id` and poll interval.
 - **Idle:** `No pending jobs, sleeping N seconds` once per idle poll.
 - **Work:** logs claimed job `id`/`type`, completion, or failure (with traceback on handler errors or on malformed rows that pass the `id` check).
+- **Rendered fetch diagnostics:** logs include selector/step failures, request discovery counts, and rendered HTML size metadata.

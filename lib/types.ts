@@ -4,6 +4,32 @@ export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancell
 export type ReviewStatus = "pending" | "approved" | "rejected" | "needs_review";
 export type JobType = "crawl" | "scrape" | "classify";
 export type JobStatus = "pending" | "running" | "completed" | "failed";
+export type FetchMode = "static" | "rendered" | "api";
+
+export type RenderedInteractionStep =
+  | { type: "click"; selector: string }
+  | { type: "fill"; selector: string; value: string }
+  | { type: "select"; selector: string; value: string | string[] }
+  | { type: "wait_for_selector"; selector: string }
+  | { type: "wait_for_timeout"; timeout_ms: number }
+  | { type: "wait_for_network_idle" };
+
+export type SourceFetchConfig = {
+  rendered?: {
+    wait_until?: "load" | "domcontentloaded" | "networkidle";
+    wait_for_selector?: string;
+    click_selectors?: string[];
+    timeout_ms?: number;
+    steps?: RenderedInteractionStep[];
+    request_capture_limit?: number;
+  };
+  api?: {
+    endpoint?: string | null;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    headers?: Record<string, string>;
+    payload?: unknown;
+  };
+};
 
 export type Source = {
   id: string;
@@ -12,6 +38,8 @@ export type Source = {
   base_url: string;
   entry_urls: string[];
   status: SourceStatus;
+  fetch_mode: FetchMode;
+  fetch_config: SourceFetchConfig;
   crawl_frequency: string | null;
   scrape_frequency: string | null;
   compliance_notes: string | null;
