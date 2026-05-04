@@ -226,6 +226,7 @@ def normalise_records_from_json_mapping(
                     "published_date": published_date if isinstance(published_date, str) else None,
                     "extracted": {
                         "record_type": "product_document",
+                        "title": title[:500],
                         "product_group_key": product_group_key,
                         "product_name": product_name,
                         "product_category": product_category,

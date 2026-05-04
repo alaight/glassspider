@@ -1,6 +1,7 @@
 import logging
 import re
 import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
@@ -143,6 +144,21 @@ def _extract_sections(soup: BeautifulSoup) -> list[dict[str, str]]:
         if text_parts:
             sections.append({"heading": heading_text[:200], "text": " ".join(text_parts)[:3000]})
     return sections[:30]
+
+
+def _parse_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return {}
+    text = value.strip()
+    if not text or not text.startswith("{"):
+        return {}
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
 
 
 def _upsert_normalised_record(
@@ -365,6 +381,46 @@ def _extract_product_from_document_row(
     }
 
 
+def _extract_product_from_bid_row(
+    *,
+    row: dict[str, Any],
+    source_base_url: str,
+) -> dict[str, Any] | None:
+    payload = _parse_json_object(row.get("description"))
+    product_obj = payload.get("product") if isinstance(payload.get("product"), dict) else {}
+    product_slug = product_obj.get("slug") if isinstance(product_obj.get("slug"), str) else None
+    product_page_url = urljoin(source_base_url, product_slug) if product_slug else None
+    product_name = (
+        product_obj.get("name") if isinstance(product_obj.get("name"), str) else row.get("supplier_name")
+    )
+    product_category = (
+        product_obj.get("category") if isinstance(product_obj.get("category"), str) else row.get("sector_primary")
+    )
+    product_image_url = product_obj.get("imageUrl") if isinstance(product_obj.get("imageUrl"), str) else None
+    key = _build_product_group_key(
+        base_url=source_base_url,
+        product_slug=product_slug,
+        product_name=str(product_name) if isinstance(product_name, str) else None,
+        product_category=str(product_category) if isinstance(product_category, str) else None,
+    )
+    if not product_page_url and not key:
+        return None
+    return {
+        "group_key": key or product_page_url,
+        "product_page_url": product_page_url,
+        "product_name": product_name,
+        "product_category": product_category,
+        "product_slug": product_slug,
+        "product_image_url": product_image_url,
+        "document": {
+            "id": row.get("id"),
+            "title": row.get("title"),
+            "type": row.get("notice_type"),
+            "url": row.get("source_url"),
+        },
+    }
+
+
 def _extract_product_page_payload(
     *,
     base_url: str,
@@ -493,6 +549,7 @@ async def _run_hydrate_product_pages(
         .data
         or []
     )
+    records_scanned = len(document_rows)
     grouped: dict[str, dict[str, Any]] = {}
     for row in document_rows:
         product = _extract_product_from_document_row(row=row, source_base_url=source_base_url)
@@ -518,11 +575,68 @@ async def _run_hydrate_product_pages(
         if not any(item.get("url") == product["document"].get("url") for item in bucket["documents"]):
             bucket["documents"].append(product["document"])
 
+    if not grouped:
+        logger.warning(
+            "hydrate_product_pages found no product URLs in glassspider_records extracted JSON source_id=%s hint=%s",
+            job.source_id,
+            "No product_page_url found in extracted JSON",
+        )
+        fallback_rows = (
+            db.table("glassspider_bid_records")
+            .select("id,title,source_url,notice_type,supplier_name,sector_primary,description")
+            .eq("source_id", job.source_id)
+            .order("updated_at", desc=True)
+            .limit(5000)
+            .execute()
+            .data
+            or []
+        )
+        records_scanned += len(fallback_rows)
+        for row in fallback_rows:
+            product = _extract_product_from_bid_row(row=row, source_base_url=source_base_url)
+            if not product:
+                continue
+            key = str(product["group_key"])
+            bucket = grouped.get(key)
+            if not bucket:
+                grouped[key] = {
+                    "group_key": key,
+                    "product_page_url": product.get("product_page_url"),
+                    "product_name": product.get("product_name"),
+                    "product_category": product.get("product_category"),
+                    "product_slug": product.get("product_slug"),
+                    "product_image_url": product.get("product_image_url"),
+                    "documents": [],
+                    "record_ids": [],
+                }
+                bucket = grouped[key]
+            if product.get("product_page_url") and not bucket.get("product_page_url"):
+                bucket["product_page_url"] = product.get("product_page_url")
+            if not any(item.get("url") == product["document"].get("url") for item in bucket["documents"]):
+                bucket["documents"].append(product["document"])
+
     products = [value for value in grouped.values() if value.get("product_page_url")][: max(limit, 1)]
+    sample_product_urls = [str(value.get("product_page_url")) for value in products[:5]]
+    logger.info(
+        "hydrate_product_pages source=%s records_scanned=%s product_urls_found=%s sample_urls=%s",
+        job.source_id,
+        records_scanned,
+        len(grouped),
+        sample_product_urls,
+    )
     if not products:
+        logger.warning(
+            "hydrate_product_pages no products to fetch source_id=%s hint=%s",
+            job.source_id,
+            "No product_page_url found in extracted JSON",
+        )
         return {
             "mode": "hydrate_product_pages",
             "products_seen": len(grouped),
+            "records_scanned": records_scanned,
+            "product_urls_found": len(grouped),
+            "sample_product_urls": sample_product_urls,
+            "warning": "No product_page_url found in extracted JSON",
             "products_fetched": 0,
             "products_created": 0,
             "products_updated": 0,
@@ -669,6 +783,9 @@ async def _run_hydrate_product_pages(
     return {
         "mode": "hydrate_product_pages",
         "products_seen": len(grouped),
+        "records_scanned": records_scanned,
+        "product_urls_found": len(grouped),
+        "sample_product_urls": sample_product_urls,
         "products_fetched": products_fetched,
         "products_created": products_created,
         "products_updated": products_updated,
