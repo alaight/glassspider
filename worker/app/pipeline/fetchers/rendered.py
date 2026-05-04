@@ -144,11 +144,22 @@ async def _apply_step(page: Any, step: dict[str, Any], timeout_ms: int) -> None:
 
 
 class RenderedFetchError(RuntimeError):
-    def __init__(self, message: str, *, stage: str, elapsed_ms: int, partial: dict[str, Any]):
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str,
+        elapsed_ms: int,
+        partial: dict[str, Any],
+        exception_type: str | None = None,
+        exception_message: str | None = None,
+    ):
         super().__init__(message)
         self.stage = stage
         self.elapsed_ms = elapsed_ms
         self.partial = partial
+        self.exception_type = exception_type
+        self.exception_message = exception_message
 
 
 async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agent: str) -> FetchResult:
@@ -190,7 +201,30 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
         logger.info("rendered_fetch:start url=%s", url)
         stage = "launch_browser"
         async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=True)
+            try:
+                browser = await asyncio.wait_for(
+                    playwright.chromium.launch(
+                        headless=True,
+                        args=[
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            "--single-process",
+                        ],
+                    ),
+                    timeout=15,
+                )
+            except Exception as exc:
+                partial["warnings"].append(f"Chromium launch failed: {type(exc).__name__}: {exc}")
+                logger.exception("rendered_fetch:failed stage=launch_browser")
+                raise RenderedFetchError(
+                    "Chromium launch failed",
+                    stage="launch_browser",
+                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    partial=partial,
+                    exception_type=type(exc).__name__,
+                    exception_message=str(exc),
+                ) from exc
             logger.info("rendered_fetch:browser_launched")
             context = await browser.new_context(user_agent=user_agent)
             page = await context.new_page()
@@ -334,6 +368,8 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
             stage=stage,
             elapsed_ms=elapsed_ms,
             partial=partial,
+            exception_type=type(exc).__name__,
+            exception_message=str(exc),
         ) from exc
     except RenderedFetchError:
         raise
@@ -345,4 +381,6 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
             stage=stage,
             elapsed_ms=elapsed_ms,
             partial=partial,
+            exception_type=type(exc).__name__,
+            exception_message=str(exc),
         ) from exc

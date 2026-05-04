@@ -83,4 +83,5 @@ flowchart TD
 
 - Required env vars are documented in the root **`README.md`** and `.env.example`.
 - Explore rendered diagnostics use a server-side proxy in `POST /api/explore/fetch` to call the worker `POST /debug/fetch-rendered` with `GLASSSPIDER_WORKER_BASE_URL` + bearer `GLASSSPIDER_WORKER_DEBUG_TOKEN`; browsers do not call Fly directly.
+- Worker debug runtime checks are available at `GET /debug/playwright-health` and `GET /debug/routes` (both bearer-token protected).
 - The Fly worker uses `worker/fly.toml`; deploy from the **repository root** with `fly deploy -c worker/fly.toml`. Docker build context is the **repo root**; `worker/Dockerfile` copies `worker/requirements.txt` and `worker/app`.

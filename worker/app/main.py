@@ -177,6 +177,8 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
             "error": str(exc),
             "stage": exc.stage,
             "elapsed_ms": exc.elapsed_ms,
+            "exception_type": exc.exception_type,
+            "exception_message": exc.exception_message,
             "partial": exc.partial,
         }
     except Exception as exc:
@@ -208,6 +210,51 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
         "warnings": result.metadata.get("warnings", []),
         "metadata": result.metadata,
         "config_echo": rendered_config,
+    }
+
+
+@app.get("/debug/playwright-health", dependencies=[Depends(require_debug_token)])
+async def debug_playwright_health() -> dict:
+    started = asyncio.get_running_loop().time()
+    stage = "init"
+
+    try:
+        stage = "launch_browser"
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as playwright:
+            browser = await asyncio.wait_for(
+                playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--single-process",
+                    ],
+                ),
+                timeout=15,
+            )
+            stage = "open_page"
+            context = await browser.new_context()
+            page = await context.new_page()
+            await page.goto("about:blank", wait_until="domcontentloaded", timeout=5000)
+            await context.close()
+            await browser.close()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "Chromium launch failed",
+            "stage": stage,
+            "elapsed_ms": int((asyncio.get_running_loop().time() - started) * 1000),
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+        }
+
+    return {
+        "ok": True,
+        "stage": "browser_launch",
+        "elapsed_ms": int((asyncio.get_running_loop().time() - started) * 1000),
     }
 
 

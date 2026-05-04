@@ -58,3 +58,11 @@ Keep at least one machine running so polling and the internal scheduler continue
 - **Idle:** `No pending jobs, sleeping N seconds` once per idle poll.
 - **Work:** logs claimed job `id`/`type`, completion, or failure (with traceback on handler errors or on malformed rows that pass the `id` check).
 - **Rendered fetch diagnostics:** logs include selector/step failures, request discovery counts, and rendered HTML size metadata.
+
+## Debug endpoints (bearer token)
+
+- `GET /debug/playwright-health` launches Chromium, opens `about:blank`, and closes it (quick runtime smoke check).
+- `POST /debug/fetch-rendered` runs the rendered fetch flow and returns diagnostics / partial failure state.
+- `GET /debug/routes` lists registered worker routes.
+
+All `/debug/*` endpoints require `Authorization: Bearer <GLASSSPIDER_WORKER_DEBUG_TOKEN>`.
