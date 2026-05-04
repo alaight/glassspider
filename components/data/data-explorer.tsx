@@ -9,10 +9,10 @@ import { RecordInspector } from "@/components/data/record-inspector";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { BidRecord, Source } from "@/lib/types";
+import type { GenericRecord, Source } from "@/lib/types";
 
 type ExplorerProps = {
-  rows: BidRecord[];
+  rows: GenericRecord[];
   sources: Source[];
   total: number | null;
   limit: number;
@@ -24,6 +24,15 @@ type ExplorerProps = {
     dateTo: string;
   };
 };
+
+function readText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function readStringList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
 
 export function DataExplorer({ rows, sources, total, limit, offset, filters }: ExplorerProps) {
   const router = useRouter();
@@ -60,7 +69,7 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
     return params.toString();
   }
 
-  const columns = useMemo<Column<BidRecord>[]>(
+  const columns = useMemo<Column<GenericRecord>[]>(
     () => [
       {
         key: "title",
@@ -68,24 +77,34 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
         cell: (row) => (
           <div>
             <p className="font-semibold text-slate-900">{row.title}</p>
-            <p className="text-[var(--muted)]">{row.buyer_name ?? row.source_url ?? "—"}</p>
+            <p className="text-[var(--muted)]">
+              {readText(row.summary) ?? readText(row.extracted?.buyer_name) ?? row.source_url ?? "—"}
+            </p>
           </div>
         ),
       },
       {
         key: "counterparty",
         header: "Product / source",
-        cell: (row) => row.supplier_name ?? row.buyer_name ?? "—",
+        cell: (row) => {
+          const extracted = row.extracted ?? {};
+          return (
+            readText(extracted.product_name) ??
+            readText(extracted.supplier_name) ??
+            readText(extracted.buyer_name) ??
+            "—"
+          );
+        },
       },
       {
         key: "category",
         header: "Category",
-        cell: (row) => row.sector_primary ?? "—",
+        cell: (row) => readText(row.category) ?? readText(row.extracted?.product_category) ?? "—",
       },
       {
         key: "record_type",
         header: "Record type",
-        cell: (row) => row.notice_type ?? "—",
+        cell: (row) => row.record_type ?? "—",
       },
       {
         key: "published",
@@ -94,12 +113,38 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
       },
       {
         key: "source_url",
-        header: "Document URL",
+        header: "Source URL",
         cell: (row) => (
           <a href={row.source_url} className="line-clamp-2 break-all text-[var(--accent)] underline-offset-2 hover:underline">
             {row.source_url}
           </a>
         ),
+      },
+      {
+        key: "product_page_url",
+        header: "Product page",
+        cell: (row) => {
+          const productPageUrl = readText(row.extracted?.product_page_url);
+          if (!productPageUrl) return "—";
+          return (
+            <a href={productPageUrl} className="line-clamp-2 break-all text-[var(--accent)] underline-offset-2 hover:underline">
+              {productPageUrl}
+            </a>
+          );
+        },
+      },
+      {
+        key: "image",
+        header: "Image",
+        cell: (row) => {
+          const imageUrl = readText(row.image_url) ?? readText(row.extracted?.product_image_url) ?? readStringList(row.extracted?.product_image_urls)[0];
+          if (!imageUrl) return "—";
+          return (
+            <a href={imageUrl} className="text-[var(--accent)] underline-offset-2 hover:underline">
+              Preview
+            </a>
+          );
+        },
       },
       {
         key: "status",
@@ -164,7 +209,7 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
           </button>
         </form>
         <p className="mt-2 text-[11px] text-[var(--muted)]">
-          Keyword mode uses Postgres full‑text (`search_vector`). Click a row to inspect extracted fields and raw capture.
+          Keyword mode matches title/summary text. Click a row to inspect extracted fields and raw capture.
         </p>
       </Panel>
 

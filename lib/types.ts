@@ -152,6 +152,27 @@ export type BidRecord = {
 /** Normalised scraped row (semantic alias — not only procurement). */
 export type CanonicalRecord = BidRecord;
 
+export type GenericRecord = {
+  id: string;
+  source_id: string | null;
+  raw_record_id: string | null;
+  record_type: string;
+  source_url: string;
+  external_reference: string | null;
+  title: string;
+  summary: string | null;
+  category: string | null;
+  subcategory: string | null;
+  primary_url: string | null;
+  image_url: string | null;
+  published_date: string | null;
+  extracted: Record<string, unknown>;
+  raw: Record<string, unknown>;
+  review_status: ReviewStatus;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RawRecord = {
   id: string;
   source_id: string | null;
@@ -181,7 +202,7 @@ export type Classification = {
 };
 
 export type RecordWorkspace = {
-  record: BidRecord;
+  record: GenericRecord;
   raw: RawRecord | null;
   classifications: Classification[];
 };

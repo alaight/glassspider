@@ -1,8 +1,12 @@
 import logging
+import re
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
+from bs4 import BeautifulSoup
 from supabase import Client
 
 from app.config import get_settings
@@ -66,6 +70,81 @@ def _resolve_declared_api_config(fetch_config: dict[str, Any], source: dict[str,
     return declared_api_config
 
 
+def _slugify(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def _host_key(base_url: str) -> str:
+    host = base_url.split("//")[-1].split("/")[0].lower()
+    return host.replace(".", "-") or "source"
+
+
+def _build_product_group_key(
+    *,
+    base_url: str,
+    product_slug: str | None,
+    product_name: str | None,
+    product_category: str | None,
+) -> str | None:
+    if product_slug:
+        slug = _slugify(product_slug.replace("/", " "))
+        if slug:
+            return f"{_host_key(base_url)}:{slug}"
+    combined = " ".join([part for part in [product_name, product_category] if part]).strip()
+    if not combined:
+        return None
+    return f"{_host_key(base_url)}:{_slugify(combined)}"
+
+
+def _extract_field_pairs(soup: BeautifulSoup) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for row in soup.select("table tr"):
+        key_node = row.find(["th", "td"])
+        value_node = key_node.find_next_sibling("td") if key_node else None
+        if not key_node or not value_node:
+            continue
+        key = key_node.get_text(" ", strip=True)
+        value = value_node.get_text(" ", strip=True)
+        if key and value:
+            fields[_slugify(key).replace("-", "_")] = value[:1000]
+    for dt in soup.select("dl dt"):
+        dd = dt.find_next_sibling("dd")
+        key = dt.get_text(" ", strip=True)
+        value = dd.get_text(" ", strip=True) if dd else ""
+        if key and value:
+            fields[_slugify(key).replace("-", "_")] = value[:1000]
+    for item in soup.select("li"):
+        text = item.get_text(" ", strip=True)
+        if ":" not in text or len(text) > 250:
+            continue
+        key, value = [part.strip() for part in text.split(":", 1)]
+        if key and value and len(key) < 80:
+            fields.setdefault(_slugify(key).replace("-", "_"), value[:1000])
+    return fields
+
+
+def _extract_sections(soup: BeautifulSoup) -> list[dict[str, str]]:
+    sections: list[dict[str, str]] = []
+    for heading in soup.select("h2, h3"):
+        heading_text = heading.get_text(" ", strip=True)
+        if not heading_text:
+            continue
+        text_parts: list[str] = []
+        cursor = heading.find_next_sibling()
+        steps = 0
+        while cursor is not None and steps < 8:
+            if getattr(cursor, "name", "") in {"h2", "h3"}:
+                break
+            chunk = cursor.get_text(" ", strip=True)
+            if chunk:
+                text_parts.append(chunk)
+            cursor = cursor.find_next_sibling()
+            steps += 1
+        if text_parts:
+            sections.append({"heading": heading_text[:200], "text": " ".join(text_parts)[:3000]})
+    return sections[:30]
+
+
 def _upsert_normalised_record(
     *,
     db: Client,
@@ -104,7 +183,34 @@ def _upsert_normalised_record(
         .data[0]
     )
 
-    source_url = str(normalised["bid"].get("source_url") or normalised["raw"].get("source_url") or "")
+    canonical_record = normalised.get("record") if isinstance(normalised.get("record"), dict) else {}
+    record_source_url = str(canonical_record.get("source_url") or normalised["raw"].get("source_url") or "")
+    record_title = str(canonical_record.get("title") or normalised["bid"].get("title") or "Untitled record")
+    record_extracted = canonical_record.get("extracted") if isinstance(canonical_record.get("extracted"), dict) else {}
+    record_raw = canonical_record.get("raw") if isinstance(canonical_record.get("raw"), dict) else {}
+    record_payload = {
+        "source_id": job.source_id,
+        "raw_record_id": raw_record["id"],
+        "record_type": str(canonical_record.get("record_type") or "generic"),
+        "source_url": record_source_url,
+        "external_reference": canonical_record.get("external_reference"),
+        "title": record_title[:500],
+        "summary": str(canonical_record.get("summary"))[:4000] if canonical_record.get("summary") else None,
+        "category": str(canonical_record.get("category"))[:240] if canonical_record.get("category") else None,
+        "subcategory": str(canonical_record.get("subcategory"))[:240] if canonical_record.get("subcategory") else None,
+        "primary_url": str(canonical_record.get("primary_url")) if canonical_record.get("primary_url") else None,
+        "image_url": str(canonical_record.get("image_url")) if canonical_record.get("image_url") else None,
+        "published_date": canonical_record.get("published_date"),
+        "extracted": record_extracted,
+        "raw": record_raw,
+        "review_status": str(canonical_record.get("review_status") or normalised["bid"].get("review_status") or "needs_review"),
+    }
+    db.table("glassspider_records").upsert(
+        record_payload,
+        on_conflict="source_id,record_type,source_url",
+    ).execute()
+
+    source_url = str(normalised["bid"].get("source_url") or normalised["raw"].get("source_url") or record_source_url)
     existing_bid = (
         db.table("glassspider_bid_records")
         .select("id")
@@ -171,6 +277,7 @@ async def _run_declared_api_extraction(
         "record_selector": declared.get("record_selector") or "$[*]",
         "field_mapping": declared.get("field_mapping") if isinstance(declared.get("field_mapping"), dict) else {},
         "url_fields": declared.get("url_fields") if isinstance(declared.get("url_fields"), dict) else {},
+        "base_url": source.get("base_url") or endpoint,
     }
     mapped_records: list[dict[str, dict[str, Any]]] = []
     if result.json_data is not None:
@@ -187,7 +294,13 @@ async def _run_declared_api_extraction(
     records_skipped = 0
 
     for normalised in mapped_records:
-        source_url = str(normalised["bid"].get("source_url") or normalised["raw"].get("source_url") or "")
+        canonical_record = normalised.get("record") if isinstance(normalised.get("record"), dict) else {}
+        source_url = str(
+            canonical_record.get("source_url")
+            or normalised["bid"].get("source_url")
+            or normalised["raw"].get("source_url")
+            or ""
+        )
         if not source_url:
             records_skipped += 1
             continue
@@ -213,6 +326,354 @@ async def _run_declared_api_extraction(
         "mode": "declared_api",
         "endpoint": endpoint,
         "fetch_mode": fetch_mode,
+    }
+
+
+def _extract_product_from_document_row(
+    *,
+    row: dict[str, Any],
+    source_base_url: str,
+) -> dict[str, Any] | None:
+    extracted = row.get("extracted") if isinstance(row.get("extracted"), dict) else {}
+    product_page_url = extracted.get("product_page_url") if isinstance(extracted.get("product_page_url"), str) else None
+    product_name = extracted.get("product_name") if isinstance(extracted.get("product_name"), str) else None
+    product_category = extracted.get("product_category") if isinstance(extracted.get("product_category"), str) else None
+    product_slug = extracted.get("product_slug") if isinstance(extracted.get("product_slug"), str) else None
+    if not product_page_url and product_slug:
+        product_page_url = urljoin(source_base_url, product_slug)
+    key = _build_product_group_key(
+        base_url=source_base_url,
+        product_slug=product_slug,
+        product_name=product_name,
+        product_category=product_category,
+    )
+    if not product_page_url and not key:
+        return None
+    return {
+        "group_key": key or product_page_url,
+        "product_page_url": product_page_url,
+        "product_name": product_name,
+        "product_category": product_category,
+        "product_slug": product_slug,
+        "product_image_url": extracted.get("product_image_url"),
+        "document": {
+            "id": row.get("id"),
+            "title": row.get("title"),
+            "type": extracted.get("document_type") or extracted.get("record_type"),
+            "url": row.get("source_url"),
+        },
+    }
+
+
+def _extract_product_page_payload(
+    *,
+    base_url: str,
+    page_url: str,
+    html: str,
+    fallback_name: str | None,
+    fallback_category: str | None,
+    fallback_image_url: str | None,
+    product_group_key: str,
+    linked_documents: list[dict[str, Any]],
+    fetched_via: str,
+) -> dict[str, Any]:
+    soup = BeautifulSoup(html, "html.parser")
+    title_node = soup.select_one("h1")
+    page_title = title_node.get_text(" ", strip=True) if title_node else ""
+    if not page_title and soup.title:
+        page_title = soup.title.get_text(" ", strip=True)
+    page_title = page_title or fallback_name or "Untitled product"
+
+    meta_description = ""
+    meta_node = soup.select_one('meta[name="description"]')
+    if meta_node and meta_node.get("content"):
+        meta_description = str(meta_node.get("content")).strip()
+
+    description = ""
+    main_node = soup.select_one("main")
+    if main_node:
+        paragraphs = [node.get_text(" ", strip=True) for node in main_node.select("p")]
+        text_chunks = [chunk for chunk in paragraphs if len(chunk) > 80]
+        description = " ".join(text_chunks[:4])[:5000]
+    if not description:
+        description = meta_description
+
+    image_urls: list[str] = []
+    for image in soup.select("img[src]"):
+        src = str(image.get("src") or "").strip()
+        if not src:
+            continue
+        absolute = urljoin(page_url, src)
+        if absolute not in image_urls:
+            image_urls.append(absolute)
+    if fallback_image_url and fallback_image_url not in image_urls:
+        image_urls.insert(0, fallback_image_url)
+
+    fields = _extract_field_pairs(soup)
+    sections = _extract_sections(soup)
+    pdf_links = []
+    for anchor in soup.select("a[href]"):
+        href = str(anchor.get("href") or "").strip()
+        if not href.lower().endswith(".pdf"):
+            continue
+        url = urljoin(page_url, href)
+        if any(item.get("url") == url for item in pdf_links):
+            continue
+        pdf_links.append(
+            {
+                "title": anchor.get_text(" ", strip=True)[:300] or url,
+                "type": "linked_document",
+                "url": url,
+            }
+        )
+
+    combined_documents = linked_documents[:]
+    for candidate in pdf_links:
+        if not any(doc.get("url") == candidate.get("url") for doc in combined_documents):
+            combined_documents.append(candidate)
+
+    raw_text = soup.get_text(" ", strip=True)
+    raw_text = re.sub(r"\s+", " ", raw_text)
+    product_category = fields.get("category") or fallback_category
+
+    return {
+        "record_type": "product",
+        "source_url": page_url,
+        "title": page_title[:500],
+        "summary": description[:4000] if description else None,
+        "category": product_category[:240] if isinstance(product_category, str) else None,
+        "primary_url": page_url,
+        "image_url": (image_urls[0] if image_urls else None),
+        "extracted": {
+            "record_type": "product",
+            "product_group_key": product_group_key,
+            "product_name": page_title,
+            "product_category": product_category,
+            "product_page_url": page_url,
+            "product_image_urls": image_urls[:20],
+            "primary_image_url": image_urls[0] if image_urls else None,
+            "meta_description": meta_description[:2000] if meta_description else None,
+            "description": description[:5000] if description else None,
+            "sections": sections,
+            "fields": fields,
+            "documents": combined_documents,
+            "provenance": {
+                "base_url": base_url,
+                "source_url": page_url,
+                "fetched_at": _now(),
+                "fetched_via": fetched_via,
+                "reuse_status": "internal_only",
+            },
+        },
+        "raw": {
+            "raw_text": raw_text[:120000],
+            "raw_html": html[:180000],
+            "fields": fields,
+        },
+    }
+
+
+async def _run_hydrate_product_pages(
+    *,
+    db: Client,
+    job: Job,
+    source: dict[str, Any],
+    fetch_config: dict[str, Any],
+) -> dict[str, Any]:
+    limit = int(job.payload.get("limit") or 25)
+    source_base_url = str(source.get("base_url") or "")
+    document_rows = (
+        db.table("glassspider_records")
+        .select("id,title,source_url,extracted")
+        .eq("source_id", job.source_id)
+        .eq("record_type", "product_document")
+        .order("updated_at", desc=True)
+        .limit(5000)
+        .execute()
+        .data
+        or []
+    )
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in document_rows:
+        product = _extract_product_from_document_row(row=row, source_base_url=source_base_url)
+        if not product:
+            continue
+        key = str(product["group_key"])
+        bucket = grouped.get(key)
+        if not bucket:
+            grouped[key] = {
+                "group_key": key,
+                "product_page_url": product.get("product_page_url"),
+                "product_name": product.get("product_name"),
+                "product_category": product.get("product_category"),
+                "product_slug": product.get("product_slug"),
+                "product_image_url": product.get("product_image_url"),
+                "documents": [],
+                "record_ids": [],
+            }
+            bucket = grouped[key]
+        if product.get("product_page_url") and not bucket.get("product_page_url"):
+            bucket["product_page_url"] = product.get("product_page_url")
+        bucket["record_ids"].append(product["document"]["id"])
+        if not any(item.get("url") == product["document"].get("url") for item in bucket["documents"]):
+            bucket["documents"].append(product["document"])
+
+    products = [value for value in grouped.values() if value.get("product_page_url")][: max(limit, 1)]
+    if not products:
+        return {
+            "mode": "hydrate_product_pages",
+            "products_seen": len(grouped),
+            "products_fetched": 0,
+            "products_created": 0,
+            "products_updated": 0,
+            "products_failed": 0,
+            "documents_linked": len(document_rows),
+        }
+
+    settings = get_settings()
+    products_fetched = 0
+    products_created = 0
+    products_updated = 0
+    products_failed = 0
+    documents_linked = 0
+
+    async with httpx.AsyncClient(
+        headers={"user-agent": settings.glassspider_worker_user_agent},
+        timeout=35,
+        follow_redirects=True,
+    ) as client:
+        for product in products:
+            page_url = str(product.get("product_page_url") or "")
+            if not page_url:
+                products_failed += 1
+                continue
+            try:
+                static_result = await fetch_with_mode(
+                    mode="static_html",
+                    url=page_url,
+                    client=client,
+                    user_agent=settings.glassspider_worker_user_agent,
+                    source_config=fetch_config,
+                )
+                html = static_result.html or static_result.text or ""
+                fetched_via = "static_html"
+                if len(html) < 1000 or "<script" in html and "application/json" in html and not BeautifulSoup(html, "html.parser").select_one("h1"):
+                    rendered_result = await fetch_with_mode(
+                        mode="rendered_html",
+                        url=page_url,
+                        client=client,
+                        user_agent=settings.glassspider_worker_user_agent,
+                        source_config=fetch_config,
+                    )
+                    html = rendered_result.html or rendered_result.text or html
+                    fetched_via = "rendered_html"
+                if not html:
+                    raise ValueError("Product page returned no HTML.")
+
+                payload = _extract_product_page_payload(
+                    base_url=source_base_url,
+                    page_url=page_url,
+                    html=html,
+                    fallback_name=str(product.get("product_name") or "") or None,
+                    fallback_category=str(product.get("product_category") or "") or None,
+                    fallback_image_url=str(product.get("product_image_url") or "") or None,
+                    product_group_key=str(product["group_key"]),
+                    linked_documents=product.get("documents") if isinstance(product.get("documents"), list) else [],
+                    fetched_via=fetched_via,
+                )
+                raw_record = (
+                    db.table("glassspider_raw_records")
+                    .insert(
+                        {
+                            "source_id": job.source_id,
+                            "discovered_url_id": None,
+                            "run_id": None,
+                            "source_url": page_url,
+                            "external_reference": str(product["group_key"]),
+                            "raw_title": payload["title"],
+                            "raw_text": str(payload["raw"].get("raw_text") or ""),
+                            "raw_metadata": {
+                                "kind": "product_hydration",
+                                "product_group_key": product["group_key"],
+                                "documents": payload["extracted"].get("documents"),
+                                "provenance": payload["extracted"].get("provenance"),
+                            },
+                            "content_hash": None,
+                            "extraction_status": "needs_review",
+                        }
+                    )
+                    .execute()
+                    .data[0]
+                )
+                existing = (
+                    db.table("glassspider_records")
+                    .select("id")
+                    .eq("source_id", job.source_id)
+                    .eq("record_type", "product")
+                    .eq("source_url", page_url)
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                )
+                db.table("glassspider_records").upsert(
+                    {
+                        "source_id": job.source_id,
+                        "raw_record_id": raw_record["id"],
+                        "record_type": "product",
+                        "source_url": page_url,
+                        "external_reference": str(product["group_key"]),
+                        "title": payload["title"],
+                        "summary": payload["summary"],
+                        "category": payload["category"],
+                        "primary_url": page_url,
+                        "image_url": payload["image_url"],
+                        "published_date": None,
+                        "extracted": payload["extracted"],
+                        "raw": payload["raw"],
+                        "review_status": "needs_review",
+                    },
+                    on_conflict="source_id,record_type,source_url",
+                ).execute()
+                for record_id in product.get("record_ids", []):
+                    rows = (
+                        db.table("glassspider_records")
+                        .select("extracted")
+                        .eq("id", record_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    )
+                    row = rows[0] if rows else {}
+                    existing_extracted = row.get("extracted") if isinstance(row, dict) and isinstance(row.get("extracted"), dict) else {}
+                    merged_extracted = {
+                        **existing_extracted,
+                        "product_group_key": product["group_key"],
+                        "product_page_url": page_url,
+                        "linked_product_record_url": page_url,
+                    }
+                    db.table("glassspider_records").update({"extracted": merged_extracted}).eq("id", record_id).execute()
+                    documents_linked += 1
+                products_fetched += 1
+                if existing:
+                    products_updated += 1
+                else:
+                    products_created += 1
+            except Exception:
+                logger.exception("Product hydration failed source=%s product_url=%s", job.source_id, page_url)
+                products_failed += 1
+            await asyncio.sleep(0.35)
+
+    db.table("glassspider_sources").update({"last_scraped_at": _now()}).eq("id", job.source_id).execute()
+    return {
+        "mode": "hydrate_product_pages",
+        "products_seen": len(grouped),
+        "products_fetched": products_fetched,
+        "products_created": products_created,
+        "products_updated": products_updated,
+        "products_failed": products_failed,
+        "documents_linked": documents_linked,
     }
 
 
@@ -315,7 +776,15 @@ async def run_scrape_job(db: Client, job: Job) -> dict[str, Any]:
     )
     fetch_mode = resolve_fetch_mode(source, job.payload)
     fetch_config = resolve_fetch_config(source, job.payload)
-    if fetch_mode == "declared_api" or str(job.payload.get("mode") or "").lower() == "declared_api":
+    mode = str(job.payload.get("mode") or "").lower()
+    if mode == "hydrate_product_pages":
+        return await _run_hydrate_product_pages(
+            db=db,
+            job=job,
+            source=source,
+            fetch_config=fetch_config,
+        )
+    if fetch_mode == "declared_api" or mode == "declared_api":
         return await _run_declared_api_extraction(
             db=db,
             job=job,

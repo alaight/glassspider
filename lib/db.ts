@@ -4,6 +4,7 @@ import type {
   BidRecord,
   Classification,
   DiscoveredUrl,
+  GenericRecord,
   PipelineRun,
   RawRecord,
   RecordWorkspace,
@@ -161,19 +162,17 @@ export type RecordExplorerFilters = {
 export async function listRecordsExplorerPage(
   supabase: SupabaseClient,
   filters: RecordExplorerFilters,
-): Promise<QueryResult<{ rows: BidRecord[]; count: number | null }>> {
+): Promise<QueryResult<{ rows: GenericRecord[]; count: number | null }>> {
   const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
   const offset = Math.max(filters.offset ?? 0, 0);
   let query = supabase
-    .from("glassspider_bid_records")
+    .from("glassspider_records")
     .select("*", { count: "exact" })
     .order("updated_at", { ascending: false, nullsFirst: false });
 
   if (filters.keyword?.trim()) {
-    query = query.textSearch("search_vector", filters.keyword.trim(), {
-      config: "english",
-      type: "websearch",
-    });
+    const escaped = filters.keyword.trim().replace(/,/g, " ");
+    query = query.or(`title.ilike.%${escaped}%,summary.ilike.%${escaped}%`);
   }
 
   if (filters.sourceId) {
@@ -194,30 +193,65 @@ export async function listRecordsExplorerPage(
     return { data: { rows: [], count: null }, error: error.message ?? "Database query failed." };
   }
 
-  return { data: { rows: (data ?? []) as BidRecord[], count } };
+  return { data: { rows: (data ?? []) as GenericRecord[], count } };
 }
 
 export async function getRecordWorkspace(
   supabase: SupabaseClient,
   id: string,
 ): Promise<QueryResult<RecordWorkspace | null>> {
-  const record = await getBidRecord(supabase, id);
-
-  if (record.error) {
-    return { data: null, error: record.error };
+  const { data: genericRecord, error: genericError } = await supabase
+    .from("glassspider_records")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (genericError) {
+    return { data: null, error: genericError.message ?? "Unable to load record." };
   }
 
-  if (!record.data) {
-    return { data: null };
+  const fallbackBidToGeneric = (row: BidRecord): GenericRecord => ({
+    id: row.id,
+    source_id: row.source_id,
+    raw_record_id: row.raw_record_id,
+    record_type: row.notice_type || "legacy_bid",
+    source_url: row.source_url,
+    external_reference: null,
+    title: row.title,
+    summary: row.description,
+    category: row.sector_primary,
+    subcategory: null,
+    primary_url: row.source_url,
+    image_url: null,
+    published_date: row.published_date,
+    extracted: {
+      buyer_name: row.buyer_name,
+      supplier_name: row.supplier_name,
+      sector_primary: row.sector_primary,
+      notice_type: row.notice_type,
+      region: row.region,
+      source_url: row.source_url,
+    },
+    raw: {},
+    review_status: row.review_status,
+    created_at: row.created_at ?? new Date().toISOString(),
+    updated_at: row.created_at ?? new Date().toISOString(),
+  });
+
+  let resolvedRecord: GenericRecord | null = genericRecord ? (genericRecord as GenericRecord) : null;
+  if (!resolvedRecord) {
+    const bid = await getBidRecord(supabase, id);
+    if (bid.error) return { data: null, error: bid.error };
+    if (!bid.data) return { data: null };
+    resolvedRecord = fallbackBidToGeneric(bid.data);
   }
 
   let raw: RawRecord | null = null;
 
-  if (record.data.raw_record_id) {
+  if (resolvedRecord.raw_record_id) {
     const { data: rawRow, error: rawErr } = await supabase
       .from("glassspider_raw_records")
       .select("*")
-      .eq("id", record.data.raw_record_id)
+      .eq("id", resolvedRecord.raw_record_id)
       .maybeSingle();
 
     if (rawErr) {
@@ -226,28 +260,23 @@ export async function getRecordWorkspace(
 
     raw = (rawRow ?? null) as RawRecord | null;
   }
-
+  let rows: Classification[] = [];
   const { data: byBidId, error: clsErrBid } = await supabase
     .from("glassspider_classifications")
     .select("*")
     .eq("bid_record_id", id);
-
   if (clsErrBid) {
     return { data: null, error: clsErrBid.message ?? "Unable to load classifications." };
   }
-
-  let rows: Classification[] = ((byBidId ?? []) as Classification[]).slice();
-
-  if (record.data.raw_record_id) {
+  rows = [...rows, ...((byBidId ?? []) as Classification[])];
+  if (resolvedRecord.raw_record_id) {
     const { data: byRawId, error: clsErrRaw } = await supabase
       .from("glassspider_classifications")
       .select("*")
-      .eq("raw_record_id", record.data.raw_record_id);
-
+      .eq("raw_record_id", resolvedRecord.raw_record_id);
     if (clsErrRaw) {
       return { data: null, error: clsErrRaw.message ?? "Unable to load classifications." };
     }
-
     rows = [...rows, ...((byRawId ?? []) as Classification[])];
   }
 
@@ -262,5 +291,5 @@ export async function getRecordWorkspace(
     return true;
   });
 
-  return { data: { record: record.data, raw, classifications: rows }, error: undefined };
+  return { data: { record: resolvedRecord, raw, classifications: rows }, error: undefined };
 }

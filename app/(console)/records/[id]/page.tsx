@@ -56,8 +56,10 @@ export default async function RecordWorkspacePage({ params }: RecordDetailProps)
   }
 
   const { record, raw, classifications } = workspace.data;
-
-  const awardStartEnd = [record.award_date, record.start_date, record.end_date].filter(Boolean).join(" · ") || "—";
+  const extracted = record.extracted ?? {};
+  const productPage = typeof extracted.product_page_url === "string" ? extracted.product_page_url : record.primary_url;
+  const productName = typeof extracted.product_name === "string" ? extracted.product_name : record.title;
+  const linkedDocuments = Array.isArray(extracted.documents) ? extracted.documents.length : 0;
 
   return (
     <div className="space-y-4 p-4">
@@ -67,37 +69,41 @@ export default async function RecordWorkspacePage({ params }: RecordDetailProps)
         </Link>
       </div>
 
-      <Panel title={record.title} eyebrow={`Record · ${record.review_status}`}>
+      <Panel title={record.title} eyebrow={`Record · ${record.record_type} · ${record.review_status}`}>
         <div className="grid gap-3 text-xs lg:grid-cols-3">
           <div className="space-y-2">
-            <p className="text-[var(--muted)]">Parties</p>
+            <p className="text-[var(--muted)]">Product metadata</p>
             <p>
-              Organisation: <span className="font-semibold">{record.buyer_name ?? "Unknown"}</span>
+              Product: <span className="font-semibold">{productName ?? "Unknown"}</span>
             </p>
             <p>
-              Counterparty: <span className="font-semibold">{record.supplier_name ?? "Unknown"}</span>
+              Category: <span className="font-semibold">{record.category ?? "Uncategorised"}</span>
             </p>
             <p>
-              Category: <span className="font-semibold">{record.sector_primary ?? "Uncategorised"}</span>
+              Group key: <span className="font-semibold">{typeof extracted.product_group_key === "string" ? extracted.product_group_key : "—"}</span>
             </p>
           </div>
           <div className="space-y-2 font-mono text-[11px]">
             <p>
-              Published: {record.published_date ?? "—"}
+              Source URL:
               <br />
-              Award · start · end:
-              <br />
-              {awardStartEnd}
+              <span className="break-all">{record.source_url}</span>
             </p>
-            <p>Value: {[record.currency, record.contract_value_awarded].filter(Boolean).join(" ") || "unknown"}</p>
-            <p>{record.estimated_renewal_date ? `Renewal heuristic: ${record.estimated_renewal_date}` : ""}</p>
+            <p>
+              Published: {record.published_date ?? "—"}
+            </p>
+            <p>Linked documents: {linkedDocuments}</p>
           </div>
           <div className="space-y-3">
-            {record.description ? <p className="rounded border border-slate-200 bg-slate-50 p-2">{record.description}</p> : null}
-            {record.ai_summary ? <p className="rounded border border-dashed border-teal-200 bg-teal-50/40 p-2">{record.ai_summary}</p> : null}
+            {record.summary ? <p className="rounded border border-slate-200 bg-slate-50 p-2">{record.summary}</p> : null}
             <a className="block break-all text-[var(--accent)] underline-offset-2 hover:underline" href={record.source_url} target="_blank" rel="noreferrer">
               {record.source_url}
             </a>
+            {productPage ? (
+              <a className="block break-all text-[var(--accent)] underline-offset-2 hover:underline" href={productPage} target="_blank" rel="noreferrer">
+                {productPage}
+              </a>
+            ) : null}
           </div>
         </div>
       </Panel>

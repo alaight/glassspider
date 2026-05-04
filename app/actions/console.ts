@@ -350,12 +350,22 @@ export async function startSourceRun(formData: FormData) {
     const method = typeof declaredApiConfig?.method === "string" ? declaredApiConfig.method.toUpperCase() : "GET";
     const isDeclaredApi = sourceFetchMode === "declared_api" || !!endpoint;
     if (isDeclaredApi) {
-      payload = {
-        source_id: parsed.data.source_id,
-        mode: "declared_api",
-        endpoint,
-        method,
-      };
+      const scrapeModeRaw = String(formData.get("scrape_mode") ?? "declared_api").trim().toLowerCase();
+      if (scrapeModeRaw === "hydrate_product_pages") {
+        const limitRaw = Number(formData.get("product_limit") ?? 25);
+        payload = {
+          source_id: parsed.data.source_id,
+          mode: "hydrate_product_pages",
+          limit: Number.isFinite(limitRaw) ? Math.min(Math.max(Math.floor(limitRaw), 1), 500) : 25,
+        };
+      } else {
+        payload = {
+          source_id: parsed.data.source_id,
+          mode: "declared_api",
+          endpoint,
+          method,
+        };
+      }
     }
   }
 

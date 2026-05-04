@@ -27,6 +27,7 @@ function isDeclaredApiSource(source: Source | null) {
 export function RunJobForm({ sources, defaultSourceId, defaultRunType }: RunJobFormProps) {
   const [sourceId, setSourceId] = useState(defaultSourceId ?? sources[0]?.id ?? "");
   const [runType, setRunType] = useState<"crawl" | "scrape" | "classify">(defaultRunType);
+  const [scrapeMode, setScrapeMode] = useState<"declared_api" | "hydrate_product_pages">("declared_api");
   const selectedSource = useMemo(() => sources.find((source) => source.id === sourceId) ?? null, [sourceId, sources]);
   const declaredApi = useMemo(() => {
     if (!selectedSource) return null;
@@ -53,6 +54,7 @@ export function RunJobForm({ sources, defaultSourceId, defaultRunType }: RunJobF
   const showApiPanel = runType === "scrape" && isApiSource;
   const showCrawlSettings = runType === "crawl";
   const showScrapeFilter = runType === "scrape" && !isApiSource;
+  const showHydrateLimit = showApiPanel && scrapeMode === "hydrate_product_pages";
   const showClassifierSettings = runType === "classify";
 
   return (
@@ -94,6 +96,18 @@ export function RunJobForm({ sources, defaultSourceId, defaultRunType }: RunJobF
           <p className="mt-1 text-[11px] text-emerald-900">
             This source uses a configured API endpoint, so no URL map or URL type filter is required.
           </p>
+          <label className="mt-2 block font-medium text-emerald-900">
+            Scrape mode
+            <select
+              name="scrape_mode"
+              value={scrapeMode}
+              onChange={(event) => setScrapeMode(event.target.value as "declared_api" | "hydrate_product_pages")}
+              className="mt-1 w-full rounded border border-emerald-200 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+            >
+              <option value="declared_api">Extract API documents</option>
+              <option value="hydrate_product_pages">Hydrate product pages</option>
+            </select>
+          </label>
           <div className="mt-2 space-y-1 text-[11px] text-emerald-900">
             <p>
               Endpoint: <span className="font-mono">{typeof declaredApi?.endpoint === "string" ? declaredApi.endpoint : "Not configured"}</span>
@@ -102,6 +116,19 @@ export function RunJobForm({ sources, defaultSourceId, defaultRunType }: RunJobF
             <p>Estimated records: {estimatedRecords != null ? String(estimatedRecords) : "n/a"}</p>
             <p>Mapping: {mappingSummary.length > 0 ? mappingSummary.join(", ") : "No mapping configured yet."}</p>
           </div>
+          {showHydrateLimit ? (
+            <label className="mt-2 block font-medium text-emerald-900">
+              Product page limit
+              <input
+                name="product_limit"
+                defaultValue={25}
+                min={1}
+                max={500}
+                type="number"
+                className="mt-1 w-full rounded border border-emerald-200 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+              />
+            </label>
+          ) : null}
         </div>
       ) : null}
 

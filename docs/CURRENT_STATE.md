@@ -20,8 +20,8 @@
   - **`/explore`** (admin): ad-hoc URL fetch diagnostics with selectable fetch mode (`static_html` / `rendered_html` / `discovered_api` / `declared_api`), static-vs-rendered anchor comparison, request discovery, scored JSON endpoint candidates, JSON structure profiles, field-mapping suggestions, and iframe preview (`POST /api/explore/fetch`).
   - **`/sources`**, **`/sources/[id]`** (admin): registry, crawler rules, BidStats seed, and per-source fetch strategy (`fetch_mode`, `fetch_config` JSON with rendered/API options, JSON `record_selector`, `field_mapping`, and `url_fields`).
   - **`/url-map`** (admin): filtered/paged **`glassspider_discovered_urls`**, selection, batch scrape enqueue, optional row tagging (**UPDATE** may be blocked by RLS — see **`docs/DB_CURRENT_STATE.md`**).
-  - **`/runs`** (admin): enqueue jobs; **`GET /api/console/jobs`** polling (~5 s); expandable payload/result; retry failed jobs.
-  - **`/data`** (viewer+): filtered record explorer; keyword mode uses FTS on **`glassspider_bid_records.search_vector`**; inspector uses **`GET /api/console/records/[id]`** (canonical + raw + classifications).
+  - **`/runs`** (admin): enqueue jobs; API sources support both `declared_api` document extraction and `hydrate_product_pages` product-page enrichment mode; **`GET /api/console/jobs`** polling (~5 s); expandable payload/result; retry failed jobs.
+  - **`/data`** (viewer+): filtered record explorer over **`glassspider_records`** (generic canonical table) with product/product_document distinctions; inspector uses **`GET /api/console/records/[id]`** (canonical + raw + classifications).
   - **`/records/[id]`** (viewer+): full-page drill-down JSON + raw + classifier rows.
 - **`/`:** role redirect (admins → `/explore`, others → `/data`); sign-in redirects at root when unauthenticated.
 - **Operator navigation labels:** Discover (`/explore`), Sources (`/sources`), Scope (`/url-map`), Runs (`/runs`), Results (`/data`) with a workflow strip in the shell.
@@ -63,7 +63,7 @@ flowchart TD
 - Execution code lives under `worker/app/pipeline/`.
 - Pipeline stages:
   - `crawl`: discovers URLs and stores `glassspider_discovered_urls`, then stops; fetching is routed through source `fetch_mode`.
-  - `scrape`: runs only from explicit selected URL IDs or a filter payload and writes `glassspider_raw_records` / `glassspider_bid_records`; fetching is routed through source `fetch_mode`.
+  - `scrape`: runs from explicit selected URL IDs/filter payload or API-source mode payload (`declared_api`, `hydrate_product_pages`), writes `glassspider_raw_records`, `glassspider_records`, and (compat) `glassspider_bid_records`; fetching is routed through source `fetch_mode`.
   - `classify`: runs only from explicit selected records or a filter payload and writes `glassspider_classifications`.
 - No pipeline stage automatically enqueues another stage.
 - The worker scheduler only enqueues due crawl jobs by default.
@@ -78,6 +78,7 @@ flowchart TD
 - Job queue migration: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`.
 - Source fetch strategy migration: `supabase/migrations/20260504090000_glassspider_source_fetch_modes.sql` (`fetch_mode`, `fetch_config`).
 - API discovery migration: `supabase/migrations/20260504101500_glassspider_api_discovery.sql` (new fetch mode values + `glassspider_endpoint_candidates` with JSON structure/mapping metadata).
+- Generic records migration: `supabase/migrations/20260504201500_glassspider_generic_records.sql` (`glassspider_records` table with JSONB extracted/raw payloads for product and document records).
 - Database prose: `docs/DB_CURRENT_STATE.md`.
 - The local Supabase CLI was unavailable during migration creation, so validate migrations against the live shared schema before applying them.
 

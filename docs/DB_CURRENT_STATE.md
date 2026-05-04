@@ -12,6 +12,7 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 - Job queue schema: `supabase/migrations/20260426010000_glassspider_jobs_queue.sql`
 - Source fetch strategy schema: `supabase/migrations/20260504090000_glassspider_source_fetch_modes.sql`
 - API discovery schema: `supabase/migrations/20260504101500_glassspider_api_discovery.sql`
+- Generic records schema: `supabase/migrations/20260504201500_glassspider_generic_records.sql`
 - The local Supabase CLI was not available when the migrations were created. Validate the migrations against the live shared schema before applying them.
 
 ## Shared Ecosystem Tables
@@ -31,6 +32,7 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 - `glassspider_runs`: crawl/scrape/classification run history, counts, errors, and metadata.
 - `glassspider_discovered_urls`: stored URL map with source, type, crawl status, parent URL, matched rule, and content hash.
 - `glassspider_raw_records`: raw text and source metadata captured before normalisation.
+- `glassspider_records`: generic canonical records table (`record_type`, `extracted`, `raw`) used for non-bid and mixed source types (for example `product_document` and hydrated `product` rows).
 - `glassspider_bid_records`: canonical bid/award records with buyer, supplier, values, dates, sector, region, renewal estimate, and Postgres full-text search vector.
 - `glassspider_classifications`: rule/AI classification outputs with labels, confidence, prompt version, and review status.
 - `glassspider_saved_searches`: per-user viewer search presets.
@@ -53,16 +55,17 @@ Glassspider uses the shared Laightworks Supabase/Postgres project. Product-owned
 - Admin roles can manage source configuration (`glassspider_sources`, `glassspider_source_rules`, etc.) as allowed by migration policies — not every table exposes `UPDATE`/`INSERT` to admins.
 - Admin roles can manage `glassspider_endpoint_candidates` (approve or curate discovered endpoints); viewers can read candidate rows.
 - **`glassspider_discovered_urls`:** the bundled initial migration includes **read (`SELECT`)** access for authenticated Glassspider viewers. There is **no end-user `UPDATE` policy** there today. The Next.js console may expose “tag URL” intents, but **persisted status/type changes from the browser need a deliberate policy or RPC migration** before they succeed without the worker’s service-role client.
-- Canonical pipeline mutations (worker crawl upserts, scrape writes into `glassspider_raw_records` / `glassspider_bid_records`, classifications) use the Fly worker’s **service role**.
+- Canonical pipeline mutations (worker crawl upserts, scrape writes into `glassspider_raw_records` / `glassspider_records` / `glassspider_bid_records`, classifications) use the Fly worker’s **service role**.
 - The web app relies on SSR Supabase contexts, honours RLS on reads/config mutations that are permitted, enqueues jobs through **`glassspider_enqueue_job`**, and never loads `SUPABASE_SERVICE_ROLE_KEY` in Vercel.
 - Service role keys must never be exposed to browser code or `NEXT_PUBLIC_*` variables.
 
 ## Idempotency
 
 - Discovered URLs are unique by `(source_id, url)` and are written with upsert semantics.
+- Generic records are unique by `(source_id, record_type, source_url)` and are written with upsert semantics.
 - Bid records are unique by `source_url` in the current MVP and are written with upsert semantics.
 - Classifications have a uniqueness index across record, classifier, and prompt version with `nulls not distinct`.
 
 ## Search
 
-The **`search_vector`** column on **`glassspider_bid_records`** backs keyword mode in the **`/data`** console (Supabase **`textSearch`** with **`websearch`**). Other filters use column predicates. Elasticsearch/OpenSearch is intentionally deferred until the dataset or fuzzy-search requirements justify another service.
+Keyword mode in **`/data`** currently matches `glassspider_records.title` and `glassspider_records.summary` (`ilike`). `glassspider_bid_records.search_vector` remains available for bid-centric workflows and future search tuning.

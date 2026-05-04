@@ -93,42 +93,51 @@ export function RecordInspector({ recordId }: { recordId: string }) {
   }
 
   const record = data.record as {
+    record_type?: string;
     title: string;
     source_url?: string;
-    buyer_name?: string | null;
-    supplier_name?: string | null;
-    sector_primary?: string | null;
+    summary?: string | null;
+    extracted?: Record<string, unknown>;
+    category?: string | null;
     review_status?: string;
-    relevance_score?: number | null;
   };
+  const extracted = record.extracted ?? {};
+  const productName = typeof extracted.product_name === "string" ? extracted.product_name : null;
+  const productCategory = typeof extracted.product_category === "string" ? extracted.product_category : record.category ?? null;
+  const productPageUrl = typeof extracted.product_page_url === "string" ? extracted.product_page_url : null;
 
   const rawPreview = data.raw?.raw_text ? `${data.raw.raw_text.slice(0, 4000)}${data.raw.raw_text.length > 4000 ? "…" : ""}` : "";
 
   return (
     <div className="space-y-3 text-xs">
-      <Panel eyebrow="Record" title={record.title} padded>
+      <Panel eyebrow={record.record_type ? `Record · ${record.record_type}` : "Record"} title={record.title} padded>
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             {record.review_status ? <StatusBadge tone="neutral">{record.review_status}</StatusBadge> : null}
-            {record.sector_primary ? <StatusBadge tone="neutral">{record.sector_primary}</StatusBadge> : null}
+            {productCategory ? <StatusBadge tone="neutral">{productCategory}</StatusBadge> : null}
           </div>
-          {record.buyer_name ? (
+          {productName ? (
             <p>
-              <span className="text-[var(--muted)]">Organisation</span>
+              <span className="text-[var(--muted)]">Product</span>
               <br />
-              <span className="font-medium">{record.buyer_name}</span>
+              <span className="font-medium">{productName}</span>
             </p>
           ) : null}
-          {record.supplier_name ? (
+          {record.summary ? (
             <p>
-              <span className="text-[var(--muted)]">Counterparty</span>
+              <span className="text-[var(--muted)]">Summary</span>
               <br />
-              <span className="font-medium">{record.supplier_name}</span>
+              <span className="font-medium">{record.summary}</span>
             </p>
           ) : null}
           {record.source_url ? (
             <a className="block break-all text-[var(--accent)] underline-offset-2 hover:underline" href={record.source_url} target="_blank" rel="noreferrer">
               {record.source_url}
+            </a>
+          ) : null}
+          {productPageUrl ? (
+            <a className="block break-all text-[var(--accent)] underline-offset-2 hover:underline" href={productPageUrl} target="_blank" rel="noreferrer">
+              {productPageUrl}
             </a>
           ) : null}
           <Link className="inline-block rounded border border-[var(--panel-border)] px-3 py-1 text-[11px] font-semibold" href={`/records/${recordId}`}>
