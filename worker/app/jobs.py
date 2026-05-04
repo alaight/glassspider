@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import ValidationError
@@ -48,7 +48,7 @@ def enqueue_job(db: Client, request: EnqueueRequest) -> Job:
             "p_type": request.type,
             "p_source_id": request.source_id,
             "p_payload": request.payload,
-            "p_scheduled_at": datetime.now(UTC).isoformat(),
+            "p_scheduled_at": datetime.now(timezone.utc).isoformat(),
             "p_max_attempts": request.max_attempts,
             "p_created_by": None,
         },
@@ -85,7 +85,7 @@ def complete_job(db: Client, job: Job, result: dict[str, Any]) -> None:
 
 def fail_job(db: Client, job: Job, error: Exception) -> None:
     delay_seconds = min(60 * (2 ** max(job.attempt_count - 1, 0)), 60 * 60)
-    retry_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
     db.rpc(
         "glassspider_fail_job",
         {

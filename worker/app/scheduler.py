@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from supabase import Client
 
@@ -35,7 +35,7 @@ def _cadence_due(cadence: str | None, last_run: str | None) -> bool:
         return True
 
     parsed = datetime.fromisoformat(last_run.replace("Z", "+00:00"))
-    return (datetime.now(UTC) - parsed).total_seconds() >= seconds
+    return (datetime.now(timezone.utc) - parsed).total_seconds() >= seconds
 
 
 def enqueue_due_crawl_jobs(db: Client) -> list[str]:

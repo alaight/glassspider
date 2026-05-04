@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -18,7 +18,7 @@ from app.pipeline.normalise.html import normalise_record_from_html
 logger = logging.getLogger(__name__)
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _load_scoped_urls(db: Client, job: Job) -> list[dict]:

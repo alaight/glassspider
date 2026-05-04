@@ -1,7 +1,7 @@
 import hashlib
 import logging
 from collections import deque
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -16,7 +16,7 @@ from app.pipeline.fetchers import fetch_with_mode, resolve_fetch_config, resolve
 logger = logging.getLogger(__name__)
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def run_crawl_job(db: Client, job: Job) -> dict[str, Any]:
