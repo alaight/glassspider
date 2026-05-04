@@ -55,8 +55,22 @@ export default async function UrlMapRoute({ searchParams }: UrlMapPageProps) {
 
   return (
     <div className="space-y-3 p-4">
-      <Panel eyebrow="Context" title="Operational map">
-        Inspect everything the crawler surfaced. Selecting rows exposes batch scrape + tagging intents (respecting database policies).
+      <Panel eyebrow="Discoveries from crawl jobs" title="URL map">
+        <div className="space-y-3 text-xs leading-relaxed text-slate-700">
+          <p>
+            After a <strong className="font-semibold text-slate-900">crawl</strong>, discovered links land here so you can review, classify, bulk-queue{' '}
+            <span className="font-medium text-slate-900">extract / scrape</span> jobs, or tag statuses. Filters narrow by URL type (listing vs detail, etc.), status,
+            and source.
+          </p>
+          <div>
+            <p className="font-semibold text-slate-900">What “success” looks like</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
+              <li>Rows appear after Runs → job type crawl completes for your source.</li>
+              <li>Detail-ish URLs accumulate status updates as extract jobs drain the queue.</li>
+              <li>Selected rows unlock batch actions; if saves fail silently, Postgres RLS policies may block updates—watch for inline errors.</li>
+            </ul>
+          </div>
+        </div>
       </Panel>
       <UrlMapClient
         sources={sources.data}

@@ -35,6 +35,7 @@ function NavLink(entry: NavEntry) {
       className={`block rounded px-2 py-1.5 text-sm font-medium ${
         active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
       }`}
+      aria-current={active ? "page" : undefined}
     >
       {entry.label}
     </Link>

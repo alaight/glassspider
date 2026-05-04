@@ -60,6 +60,25 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
 
   return (
     <div className="space-y-4 p-4">
+      <Panel title="Sources" eyebrow="What this screen does">
+        <div className="space-y-3 text-xs leading-relaxed text-slate-700">
+          <p>
+            <strong className="font-semibold text-slate-900">Sources</strong> are the crawl registry: base URL, entry seed links, extractor context, compliance notes,
+            and status (<span className="font-mono">draft / active / paused</span>). Each listed source expands on its own route for{' '}
+            <span className="font-medium text-slate-900">crawler rules</span> (patterns, extractor hints, etc.).
+          </p>
+          <div>
+            <p className="font-semibold text-slate-900">Typical troubleshooting path</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
+              <li>
+                Confirm the base URL resolves and entry URLs capture the breadth you intend (homepage vs deep listing entry points).
+              </li>
+              <li>Open <span className="font-medium">Runs</span>, enqueue a crawl for this source; expect new rows in <span className="font-medium">URL map</span>.</li>
+              <li>If nothing appears, revisit rules and entry URLs—or use Explore to prototype fetch behavior first.</li>
+            </ul>
+          </div>
+        </div>
+      </Panel>
       {(search.prefillUrl || search.suggestPattern) && (
         <Panel eyebrow="From Explore" title="Suggested draft">
           <dl className="grid gap-2 text-xs md:grid-cols-2">

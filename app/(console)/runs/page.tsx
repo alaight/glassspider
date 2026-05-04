@@ -35,8 +35,24 @@ export default async function RunsConsolePage() {
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title="Operational queue">
-        Queue crawler / extractor / classifier jobs executed by Fly workers—this surface only observes and issues instructions.
+      <Panel title="Runs / jobs" eyebrow="Start work & watch failures">
+        <div className="space-y-3 text-xs leading-relaxed text-slate-700">
+          <p>
+            This panel <strong className="font-semibold text-slate-900">enqueues backend jobs</strong> (crawl, extract/scrape, classify) executed by workers. The
+            right-hand timeline lists jobs/runs plus payload and result excerpts—ideal for diagnosing why a crawl never produced URLs or extract failed midway.
+          </p>
+          <div>
+            <p className="font-semibold text-slate-900">Order of operations</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 [&>li]:text-slate-700">
+              <li>Crawl discovers URLs → inspect them in URL map.</li>
+              <li>Extract pulls structured fields → surfaced under Data and per-record inspectors.</li>
+              <li>Classify assigns review/metadata using the backlog filters exposed in the form.</li>
+            </ul>
+          </div>
+          <p className="text-[var(--muted)]">
+            Workers poll Postgres; timestamps refresh about every five seconds—navigate elsewhere and back if a job finished without an obvious flash.
+          </p>
+        </div>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-[0.82fr_1.18fr]">
