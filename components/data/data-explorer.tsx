@@ -74,7 +74,7 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
       },
       {
         key: "counterparty",
-        header: "Source / party",
+        header: "Product / source",
         cell: (row) => row.supplier_name ?? row.buyer_name ?? "—",
       },
       {
@@ -83,14 +83,23 @@ export function DataExplorer({ rows, sources, total, limit, offset, filters }: E
         cell: (row) => row.sector_primary ?? "—",
       },
       {
-        key: "value",
-        header: "Value",
-        cell: (row) => (row.contract_value_awarded != null ? `${row.currency ?? ""} ${row.contract_value_awarded.toLocaleString()}` : "—"),
+        key: "record_type",
+        header: "Record type",
+        cell: (row) => row.notice_type ?? "—",
       },
       {
         key: "published",
         header: "Published",
         cell: (row) => row.published_date ?? "—",
+      },
+      {
+        key: "source_url",
+        header: "Document URL",
+        cell: (row) => (
+          <a href={row.source_url} className="line-clamp-2 break-all text-[var(--accent)] underline-offset-2 hover:underline">
+            {row.source_url}
+          </a>
+        ),
       },
       {
         key: "status",

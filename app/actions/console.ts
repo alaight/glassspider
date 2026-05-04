@@ -330,7 +330,34 @@ export async function startSourceRun(formData: FormData) {
     throw new Error("Supabase is not configured.");
   }
 
-  const payload = buildJobPayload(parsed.data.run_type, formData);
+  let payload: Record<string, unknown> = buildJobPayload(parsed.data.run_type, formData) as Record<string, unknown>;
+  if (parsed.data.run_type === "scrape") {
+    const { data: source, error: sourceError } = await supabase
+      .from("glassspider_sources")
+      .select("id,fetch_mode,fetch_config")
+      .eq("id", parsed.data.source_id)
+      .maybeSingle();
+    if (sourceError) {
+      throw new Error(sourceError.message);
+    }
+    const sourceFetchMode = typeof source?.fetch_mode === "string" ? source.fetch_mode : "static_html";
+    const declaredApiConfig =
+      source?.fetch_config && typeof source.fetch_config === "object" && !Array.isArray(source.fetch_config)
+        ? ((source.fetch_config as Record<string, unknown>).declared_api as Record<string, unknown> | undefined) ??
+          ((source.fetch_config as Record<string, unknown>).api as Record<string, unknown> | undefined)
+        : undefined;
+    const endpoint = typeof declaredApiConfig?.endpoint === "string" ? declaredApiConfig.endpoint : null;
+    const method = typeof declaredApiConfig?.method === "string" ? declaredApiConfig.method.toUpperCase() : "GET";
+    const isDeclaredApi = sourceFetchMode === "declared_api" || !!endpoint;
+    if (isDeclaredApi) {
+      payload = {
+        source_id: parsed.data.source_id,
+        mode: "declared_api",
+        endpoint,
+        method,
+      };
+    }
+  }
 
   const { error } = await enqueueJob(supabase, {
     type: parsed.data.run_type,

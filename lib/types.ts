@@ -129,6 +129,7 @@ export type BidRecord = {
   source_id: string | null;
   raw_record_id: string | null;
   source_url: string;
+  notice_type?: string | null;
   title: string;
   description: string | null;
   buyer_name: string | null;
