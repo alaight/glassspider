@@ -15,6 +15,7 @@ from app.pipeline.crawl.runner import run_crawl_job
 from app.pipeline.fetchers import fetch_with_mode
 from app.pipeline.fetchers.rendered import RenderedFetchError
 from app.pipeline.scrape.runner import run_scrape_job
+from app.playwright_runtime import CHROMIUM_LAUNCH_TIMEOUT_S, chromium_launch_kwargs, log_startup_diagnostics
 from app.scheduler import enqueue_due_crawl_jobs, scheduler_loop
 
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +47,7 @@ def require_debug_token(authorization: str = Header(default="")) -> None:
 
 @app.on_event("startup")
 async def startup() -> None:
+    await log_startup_diagnostics()
     db = get_supabase()
     handlers = {
         "crawl": run_crawl_job,
@@ -141,10 +143,11 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
     try:
         async with httpx.AsyncClient(
             headers={"user-agent": settings.glassspider_worker_user_agent},
-            timeout=45,
+            timeout=180,
             follow_redirects=True,
         ) as client:
             stage = "rendered_fetch"
+            # Allow cold Chromium launch + navigation (see CHROMIUM_LAUNCH_TIMEOUT_S, overall_timeout_ms).
             result = await asyncio.wait_for(
                 fetch_with_mode(
                     mode="rendered",
@@ -153,7 +156,7 @@ async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
                     user_agent=settings.glassspider_worker_user_agent,
                     source_config=source_config,
                 ),
-                timeout=45,
+                timeout=150,
             )
     except asyncio.TimeoutError:
         elapsed_ms = int((asyncio.get_running_loop().time() - started) * 1000)
@@ -224,16 +227,8 @@ async def debug_playwright_health() -> dict:
 
         async with async_playwright() as playwright:
             browser = await asyncio.wait_for(
-                playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--single-process",
-                    ],
-                ),
-                timeout=15,
+                playwright.chromium.launch(**chromium_launch_kwargs()),
+                timeout=CHROMIUM_LAUNCH_TIMEOUT_S,
             )
             stage = "open_page"
             context = await browser.new_context()
@@ -247,14 +242,16 @@ async def debug_playwright_health() -> dict:
             "error": "Chromium launch failed",
             "stage": stage,
             "elapsed_ms": int((asyncio.get_running_loop().time() - started) * 1000),
+            "launch_timeout_s": CHROMIUM_LAUNCH_TIMEOUT_S,
             "exception_type": type(exc).__name__,
             "exception_message": str(exc),
         }
 
     return {
         "ok": True,
-        "stage": "browser_launch",
+        "stage": "complete",
         "elapsed_ms": int((asyncio.get_running_loop().time() - started) * 1000),
+        "launch_timeout_s": CHROMIUM_LAUNCH_TIMEOUT_S,
     }
 
 

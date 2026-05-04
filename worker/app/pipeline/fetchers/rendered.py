@@ -8,6 +8,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from app.pipeline.fetchers.types import FetchResult
+from app.playwright_runtime import CHROMIUM_LAUNCH_TIMEOUT_S, chromium_launch_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,8 @@ class RenderedFetchError(RuntimeError):
 async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agent: str) -> FetchResult:
     started = time.perf_counter()
     timeout_ms = int(rendered_config.get("timeout_ms") or 30_000)
-    overall_timeout_ms = int(rendered_config.get("overall_timeout_ms") or 40_000)
+    # Must exceed Chromium cold launch (see CHROMIUM_LAUNCH_TIMEOUT_S) plus navigation and steps.
+    overall_timeout_ms = int(rendered_config.get("overall_timeout_ms") or 120_000)
     goto_timeout_ms = int(rendered_config.get("goto_timeout_ms") or 15_000)
     post_load_wait_ms = int(rendered_config.get("post_load_wait_ms") or 2_000)
     wait_until = str(rendered_config.get("wait_until") or "domcontentloaded")
@@ -203,16 +205,8 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
         async with async_playwright() as playwright:
             try:
                 browser = await asyncio.wait_for(
-                    playwright.chromium.launch(
-                        headless=True,
-                        args=[
-                            "--no-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-gpu",
-                            "--single-process",
-                        ],
-                    ),
-                    timeout=15,
+                    playwright.chromium.launch(**chromium_launch_kwargs()),
+                    timeout=CHROMIUM_LAUNCH_TIMEOUT_S,
                 )
             except Exception as exc:
                 partial["warnings"].append(f"Chromium launch failed: {type(exc).__name__}: {exc}")
