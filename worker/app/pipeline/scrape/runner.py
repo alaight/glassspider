@@ -161,6 +161,22 @@ def _parse_json_object(value: Any) -> dict[str, Any]:
         return {}
 
 
+def _find_existing_product_bucket_key(
+    *,
+    grouped: dict[str, dict[str, Any]],
+    product_page_url: str | None,
+    group_key: str | None,
+) -> str | None:
+    for key, bucket in grouped.items():
+        bucket_page = bucket.get("product_page_url")
+        bucket_group = bucket.get("group_key")
+        if product_page_url and bucket_page and str(bucket_page) == product_page_url:
+            return key
+        if group_key and bucket_group and str(bucket_group) == group_key:
+            return key
+    return None
+
+
 def _upsert_normalised_record(
     *,
     db: Client,
@@ -375,8 +391,9 @@ def _extract_product_from_document_row(
         "document": {
             "id": row.get("id"),
             "title": row.get("title"),
-            "type": extracted.get("document_type") or extracted.get("record_type"),
-            "url": row.get("source_url"),
+            "document_type": extracted.get("document_type") or extracted.get("record_type"),
+            "document_url": row.get("source_url"),
+            "published_date_raw": extracted.get("published_date_raw") or row.get("published_date"),
         },
     }
 
@@ -415,8 +432,9 @@ def _extract_product_from_bid_row(
         "document": {
             "id": row.get("id"),
             "title": row.get("title"),
-            "type": row.get("notice_type"),
-            "url": row.get("source_url"),
+            "document_type": row.get("notice_type"),
+            "document_url": row.get("source_url"),
+            "published_date_raw": row.get("published_date"),
         },
     }
 
@@ -473,19 +491,34 @@ def _extract_product_page_payload(
         if not href.lower().endswith(".pdf"):
             continue
         url = urljoin(page_url, href)
-        if any(item.get("url") == url for item in pdf_links):
+        if any(item.get("document_url") == url for item in pdf_links):
             continue
         pdf_links.append(
             {
                 "title": anchor.get_text(" ", strip=True)[:300] or url,
-                "type": "linked_document",
-                "url": url,
+                "document_type": "linked_document",
+                "document_url": url,
+                "published_date_raw": None,
             }
         )
 
-    combined_documents = linked_documents[:]
+    combined_documents: list[dict[str, Any]] = []
+    for document in linked_documents:
+        if not isinstance(document, dict):
+            continue
+        item = {
+            "title": document.get("title"),
+            "document_type": document.get("document_type"),
+            "document_url": document.get("document_url"),
+            "published_date_raw": document.get("published_date_raw"),
+        }
+        if not isinstance(item["document_url"], str) or not item["document_url"]:
+            continue
+        if any(existing.get("document_url") == item["document_url"] for existing in combined_documents):
+            continue
+        combined_documents.append(item)
     for candidate in pdf_links:
-        if not any(doc.get("url") == candidate.get("url") for doc in combined_documents):
+        if not any(doc.get("document_url") == candidate.get("document_url") for doc in combined_documents):
             combined_documents.append(candidate)
 
     raw_text = soup.get_text(" ", strip=True)
@@ -540,7 +573,7 @@ async def _run_hydrate_product_pages(
     source_base_url = str(source.get("base_url") or "")
     document_rows = (
         db.table("glassspider_records")
-        .select("id,title,source_url,extracted")
+        .select("id,title,source_url,published_date,extracted")
         .eq("source_id", job.source_id)
         .eq("record_type", "product_document")
         .order("updated_at", desc=True)
@@ -555,11 +588,20 @@ async def _run_hydrate_product_pages(
         product = _extract_product_from_document_row(row=row, source_base_url=source_base_url)
         if not product:
             continue
-        key = str(product["group_key"])
+        product_page_url = str(product.get("product_page_url") or "") or None
+        group_key = str(product.get("group_key") or "") or None
+        existing_key = _find_existing_product_bucket_key(
+            grouped=grouped,
+            product_page_url=product_page_url,
+            group_key=group_key,
+        )
+        key = existing_key or str(product_page_url or group_key or "")
+        if not key:
+            continue
         bucket = grouped.get(key)
         if not bucket:
             grouped[key] = {
-                "group_key": key,
+                "group_key": group_key or key,
                 "product_page_url": product.get("product_page_url"),
                 "product_name": product.get("product_name"),
                 "product_category": product.get("product_category"),
@@ -571,8 +613,9 @@ async def _run_hydrate_product_pages(
             bucket = grouped[key]
         if product.get("product_page_url") and not bucket.get("product_page_url"):
             bucket["product_page_url"] = product.get("product_page_url")
-        bucket["record_ids"].append(product["document"]["id"])
-        if not any(item.get("url") == product["document"].get("url") for item in bucket["documents"]):
+        if product["document"].get("id"):
+            bucket["record_ids"].append(product["document"]["id"])
+        if not any(item.get("document_url") == product["document"].get("document_url") for item in bucket["documents"]):
             bucket["documents"].append(product["document"])
 
     if not grouped:
@@ -596,11 +639,20 @@ async def _run_hydrate_product_pages(
             product = _extract_product_from_bid_row(row=row, source_base_url=source_base_url)
             if not product:
                 continue
-            key = str(product["group_key"])
+            product_page_url = str(product.get("product_page_url") or "") or None
+            group_key = str(product.get("group_key") or "") or None
+            existing_key = _find_existing_product_bucket_key(
+                grouped=grouped,
+                product_page_url=product_page_url,
+                group_key=group_key,
+            )
+            key = existing_key or str(product_page_url or group_key or "")
+            if not key:
+                continue
             bucket = grouped.get(key)
             if not bucket:
                 grouped[key] = {
-                    "group_key": key,
+                    "group_key": group_key or key,
                     "product_page_url": product.get("product_page_url"),
                     "product_name": product.get("product_name"),
                     "product_category": product.get("product_category"),
@@ -612,7 +664,7 @@ async def _run_hydrate_product_pages(
                 bucket = grouped[key]
             if product.get("product_page_url") and not bucket.get("product_page_url"):
                 bucket["product_page_url"] = product.get("product_page_url")
-            if not any(item.get("url") == product["document"].get("url") for item in bucket["documents"]):
+            if not any(item.get("document_url") == product["document"].get("document_url") for item in bucket["documents"]):
                 bucket["documents"].append(product["document"])
 
     products = [value for value in grouped.values() if value.get("product_page_url")][: max(limit, 1)]
@@ -650,6 +702,7 @@ async def _run_hydrate_product_pages(
     products_updated = 0
     products_failed = 0
     documents_linked = 0
+    documents_linked_by_product: list[dict[str, Any]] = []
 
     async with httpx.AsyncClient(
         headers={"user-agent": settings.glassspider_worker_user_agent},
@@ -695,6 +748,17 @@ async def _run_hydrate_product_pages(
                     linked_documents=product.get("documents") if isinstance(product.get("documents"), list) else [],
                     fetched_via=fetched_via,
                 )
+                linked_documents = payload["extracted"].get("documents")
+                linked_count = len(linked_documents) if isinstance(linked_documents, list) else 0
+                documents_linked += linked_count
+                if len(documents_linked_by_product) < 25:
+                    documents_linked_by_product.append(
+                        {
+                            "product_page_url": page_url,
+                            "product_group_key": str(product["group_key"]),
+                            "documents_linked": linked_count,
+                        }
+                    )
                 raw_record = (
                     db.table("glassspider_raw_records")
                     .insert(
@@ -768,7 +832,6 @@ async def _run_hydrate_product_pages(
                         "linked_product_record_url": page_url,
                     }
                     db.table("glassspider_records").update({"extracted": merged_extracted}).eq("id", record_id).execute()
-                    documents_linked += 1
                 products_fetched += 1
                 if existing:
                     products_updated += 1
@@ -791,6 +854,7 @@ async def _run_hydrate_product_pages(
         "products_updated": products_updated,
         "products_failed": products_failed,
         "documents_linked": documents_linked,
+        "documents_linked_by_product": documents_linked_by_product[:5],
     }
 
 
