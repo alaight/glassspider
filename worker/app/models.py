@@ -37,3 +37,28 @@ class DebugFetchRequest(BaseModel):
     url: str
     mode: FetchMode = "static"
     source_config: dict[str, Any] = Field(default_factory=dict)
+
+
+class DebugRenderedStep(BaseModel):
+    type: Literal["click", "fill", "select", "wait_for_selector", "wait_for_timeout", "wait_for_network_idle"]
+    selector: str | None = None
+    value: str | list[str] | None = None
+    milliseconds: int | None = None
+    timeout_ms: int | None = None
+
+
+class DebugRenderedConfig(BaseModel):
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] | None = None
+    wait_for_selector: str | None = None
+    click_selectors: list[str] = Field(default_factory=list)
+    steps: list[DebugRenderedStep] = Field(default_factory=list)
+    timeout_ms: int | None = None
+    capture_buttons: bool = True
+    capture_network: bool = True
+    capture_anchors: bool = True
+    request_capture_limit: int | None = None
+
+
+class DebugRenderedFetchRequest(BaseModel):
+    url: str
+    rendered: DebugRenderedConfig = Field(default_factory=DebugRenderedConfig)

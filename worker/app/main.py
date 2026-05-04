@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from app.config import get_settings
 from app.db import get_supabase
 from app.jobs import enqueue_job, worker_loop
-from app.models import DebugFetchRequest, EnqueueRequest
+from app.models import DebugFetchRequest, DebugRenderedFetchRequest, EnqueueRequest
 from app.pipeline.classify.runner import run_classify_job
 from app.pipeline.crawl.runner import run_crawl_job
 from app.pipeline.fetchers import fetch_with_mode
@@ -26,6 +26,21 @@ def require_worker_secret(x_glassspider_worker_secret: str = Header(default=""))
 
     if x_glassspider_worker_secret != settings.glassspider_worker_secret:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid worker secret")
+
+
+def require_debug_token(authorization: str = Header(default="")) -> None:
+    settings = get_settings()
+    expected = settings.glassspider_worker_debug_token
+
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Worker debug token not configured.")
+
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token.")
+
+    token = authorization.split(" ", 1)[1].strip()
+    if token != expected:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid debug token.")
 
 
 @app.on_event("startup")
@@ -111,4 +126,55 @@ async def debug_fetch(request: DebugFetchRequest) -> dict:
         "title": result.metadata.get("title"),
         "links": links,
         "json_endpoints": json_endpoints[:25],
+    }
+
+
+@app.post("/debug/fetch-rendered", dependencies=[Depends(require_debug_token)])
+async def debug_fetch_rendered(request: DebugRenderedFetchRequest) -> dict:
+    settings = get_settings()
+    rendered_config = request.rendered.model_dump(exclude_none=True)
+    source_config = {"rendered": rendered_config}
+
+    try:
+        async with httpx.AsyncClient(
+            headers={"user-agent": settings.glassspider_worker_user_agent},
+            timeout=45,
+            follow_redirects=True,
+        ) as client:
+            result = await fetch_with_mode(
+                mode="rendered",
+                url=request.url,
+                client=client,
+                user_agent=settings.glassspider_worker_user_agent,
+                source_config=source_config,
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Rendered fetch failed: {exc}") from exc
+
+    html = result.html or ""
+    capture_anchors = bool(rendered_config.get("capture_anchors", True))
+    links = _extract_links(html, result.final_url or request.url) if capture_anchors and html else []
+    discovered_requests = result.discovered_requests if bool(rendered_config.get("capture_network", True)) else []
+    json_endpoints = [
+        req
+        for req in discovered_requests
+        if "json" in (str(req.get("content_type") or "").lower()) or "/api/" in str(req.get("url") or "").lower()
+    ]
+
+    return {
+        "ok": True,
+        "worker_status": "connected",
+        "requested_url": request.url,
+        "final_url": result.final_url,
+        "status_code": result.status_code,
+        "title": result.metadata.get("title"),
+        "rendered_html_length": len(html),
+        "text_preview": (result.text or "")[:5000],
+        "anchors": links[:500],
+        "buttons_detected": result.metadata.get("buttons_detected", []),
+        "discovered_requests": discovered_requests[:50],
+        "json_endpoints": json_endpoints[:25],
+        "warnings": result.metadata.get("warnings", []),
+        "metadata": result.metadata,
+        "config_echo": rendered_config,
     }

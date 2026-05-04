@@ -38,8 +38,8 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 NEXT_PUBLIC_LAIGHTWORKS_LOGIN_URL=https://laightworks.com/login
 GLASSSPIDER_PROJECT_SLUG=glassspider
 GLASSSPIDER_ADMIN_ROLES=owner,admin
-GLASSSPIDER_WORKER_INTERNAL_URL=
-GLASSSPIDER_WORKER_SECRET=
+GLASSSPIDER_WORKER_BASE_URL=https://glassspider.fly.dev
+GLASSSPIDER_WORKER_DEBUG_TOKEN=
 ```
 
 **Shared Laightworks sign-in (`*.laightworks.com`):** set `SUPABASE_AUTH_COOKIE_DOMAIN=laightworks.com` on **both** this app **and** the Laightworks hub’s Next.js/SSR Supabase clients with the **same** value (`domain` cookie option after login/refreshes). Omit locally unless you intentionally test SSO on a deployed host group. Hub-only apex cookies cannot be read by `glaspspider.laightworks.com`; without shared domain scope users look “logged in” on laightworks.com but Glassspider still redirects to `/login`.
@@ -52,6 +52,7 @@ Create worker secrets from `worker/.env.example` for Fly.io:
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 GLASSSPIDER_WORKER_SECRET=
+GLASSSPIDER_WORKER_DEBUG_TOKEN=
 GLASSSPIDER_WORKER_ID=glassspider-worker
 GLASSSPIDER_WORKER_POLL_INTERVAL_SECONDS=15
 GLASSSPIDER_WORKER_SCHEDULER_INTERVAL_SECONDS=300

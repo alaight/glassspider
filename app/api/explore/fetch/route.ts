@@ -15,6 +15,8 @@ const bodySchema = z.object({
   includeStaticBaseline: z.boolean().optional(),
 });
 
+class ExploreConfigurationError extends Error {}
+
 type ExploreHtmlResult = {
   requestedUrl: string;
   resolvedUrl: string;
@@ -72,53 +74,52 @@ async function fetchStaticHtml(target: URL): Promise<ExploreHtmlResult> {
   }
 }
 
-async function fetchViaWorker(url: string, mode: "rendered" | "api", sourceConfig: Record<string, unknown>) {
-  const workerUrl = process.env.GLASSSPIDER_WORKER_INTERNAL_URL;
-  const workerSecret = process.env.GLASSSPIDER_WORKER_SECRET;
+async function fetchRenderedViaWorker(url: string, sourceConfig: Record<string, unknown>) {
+  const workerBaseUrl = process.env.GLASSSPIDER_WORKER_BASE_URL;
+  const workerDebugToken = process.env.GLASSSPIDER_WORKER_DEBUG_TOKEN;
 
-  if (!workerUrl || !workerSecret) {
-    throw new Error("Rendered/API Explore requires worker debug fetch configuration.");
+  if (!workerBaseUrl || !workerDebugToken) {
+    throw new ExploreConfigurationError(
+      "Rendered fetch is not configured. Missing GLASSSPIDER_WORKER_BASE_URL or GLASSSPIDER_WORKER_DEBUG_TOKEN.",
+    );
   }
+
+  const renderedConfig = (() => {
+    const provided = sourceConfig.rendered;
+    if (provided && typeof provided === "object" && !Array.isArray(provided)) {
+      return provided as Record<string, unknown>;
+    }
+    return sourceConfig;
+  })();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
 
   try {
-    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/debug/fetch`, {
+    const response = await fetch(`${workerBaseUrl.replace(/\/$/, "")}/debug/fetch-rendered`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-glassspider-worker-secret": workerSecret,
+        authorization: `Bearer ${workerDebugToken}`,
       },
       body: JSON.stringify({
         url,
-        mode,
-        source_config: sourceConfig,
+        rendered: renderedConfig,
       }),
       signal: controller.signal,
     });
 
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload?.detail ?? payload?.error ?? "Worker debug fetch failed.");
+      return {
+        ok: false,
+        status: response.status,
+        error: payload?.detail ?? payload?.error ?? "Worker debug fetch failed.",
+        payload,
+      } as const;
     }
 
-    return payload as {
-      mode: string;
-      requested_url: string;
-      title: string | null;
-      links: Array<{ href: string; absoluteUrl: string; label: string }>;
-      json_endpoints: Array<Record<string, unknown>>;
-      result: {
-        final_url: string;
-        status_code: number | null;
-        html: string | null;
-        text: string | null;
-        content_type: string | null;
-        discovered_requests: Array<Record<string, unknown>>;
-        metadata: Record<string, unknown>;
-      };
-    };
+    return { ok: true, payload } as const;
   } finally {
     clearTimeout(timeout);
   }
@@ -166,37 +167,74 @@ export async function POST(request: Request) {
       });
     }
 
+    if (mode === "api") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Explore API mode is not enabled yet in this proxy. Use static or rendered.",
+        },
+        { status: 400 },
+      );
+    }
+
     const includeStaticBaseline = parsed.data.includeStaticBaseline ?? true;
     const baseline = includeStaticBaseline ? await fetchStaticHtml(target).catch(() => null) : null;
-    const workerPayload = await fetchViaWorker(target.href, mode, sourceConfig);
-    const workerLinks = workerPayload.links ?? [];
+    const workerResult = await fetchRenderedViaWorker(target.href, sourceConfig);
+    if (!workerResult.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: workerResult.error,
+          workerStatus: "error",
+          workerStatusCode: workerResult.status,
+          workerPayload: workerResult.payload,
+        },
+        { status: workerResult.status === 401 ? 502 : workerResult.status === 403 ? 502 : 502 },
+      );
+    }
+
+    const workerPayload = workerResult.payload as {
+      ok: boolean;
+      requested_url: string;
+      final_url: string;
+      status_code: number | null;
+      title: string | null;
+      rendered_html_length: number;
+      text_preview: string;
+      anchors: Array<{ href: string; absoluteUrl: string; label: string }>;
+      buttons_detected: string[];
+      discovered_requests: Array<Record<string, unknown>>;
+      json_endpoints: Array<Record<string, unknown>>;
+      warnings: string[];
+      metadata: Record<string, unknown>;
+      config_echo: Record<string, unknown>;
+    };
+    const workerLinks = workerPayload.anchors ?? [];
     const grouped = [...groupLinksByOriginPath(workerLinks)].map(([pattern, items]) => ({ pattern, items }));
 
-    const renderedHtml = workerPayload.result.html ?? "";
-    const sanitisedHtml = renderedHtml ? stripScriptsForIframe(renderedHtml).slice(0, 2_500_000) : baseline?.sanitisedHtml ?? "";
-    const title = workerPayload.title ?? extractHtmlTitle(renderedHtml) ?? baseline?.title ?? null;
-    const resolvedUrl = workerPayload.result.final_url ?? baseline?.resolvedUrl ?? target.href;
-    const textPreview =
-      workerPayload.result.text?.slice(0, 5_000) ??
-      renderedHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 5_000);
-
     return NextResponse.json({
+      ok: true,
       mode,
       requestedUrl: parsed.data.url,
-      resolvedUrl,
-      statusCode: workerPayload.result.status_code ?? baseline?.statusCode ?? 0,
-      title,
+      resolvedUrl: workerPayload.final_url ?? baseline?.resolvedUrl ?? target.href,
+      statusCode: workerPayload.status_code ?? baseline?.statusCode ?? 0,
+      title: workerPayload.title ?? baseline?.title ?? null,
       links: workerLinks,
       grouped,
-      sanitisedHtml,
+      sanitisedHtml: baseline?.sanitisedHtml ?? "",
       initialLinks: baseline?.links ?? [],
       renderedLinks: workerLinks,
       diagnostics: {
-        contentType: workerPayload.result.content_type,
-        detectedRequests: workerPayload.result.discovered_requests ?? [],
+        workerConnectionStatus: "connected",
+        renderedConfigSent: workerPayload.config_echo ?? sourceConfig,
+        buttonsDetected: workerPayload.buttons_detected ?? [],
+        contentType: "text/html",
+        detectedRequests: workerPayload.discovered_requests ?? [],
         jsonEndpoints: workerPayload.json_endpoints ?? [],
-        metadata: workerPayload.result.metadata ?? {},
-        renderedTextPreview: textPreview,
+        metadata: workerPayload.metadata ?? {},
+        warnings: workerPayload.warnings ?? [],
+        renderedTextPreview: workerPayload.text_preview ?? "",
+        renderedHtmlLength: workerPayload.rendered_html_length ?? 0,
         staticBaseline: baseline
           ? {
               resolvedUrl: baseline.resolvedUrl,
@@ -208,9 +246,13 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof ExploreConfigurationError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
     const message =
       error instanceof Error ? (error.name === "AbortError" ? "Request timed out." : error.message) : "Fetch failed.";
 
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ ok: false, error: message }, { status: 502 });
   }
 }

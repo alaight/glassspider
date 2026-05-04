@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 type ExploreResponse = {
+  ok?: boolean;
   mode: "static" | "rendered" | "api";
   requestedUrl: string;
   resolvedUrl: string;
@@ -20,11 +21,16 @@ type ExploreResponse = {
   initialLinks?: Array<{ href: string; absoluteUrl: string; label: string }>;
   renderedLinks?: Array<{ href: string; absoluteUrl: string; label: string }>;
   diagnostics?: {
+    workerConnectionStatus?: string;
+    renderedConfigSent?: Record<string, unknown>;
+    buttonsDetected?: string[];
     contentType?: string | null;
     detectedRequests?: Array<Record<string, unknown>>;
     jsonEndpoints?: Array<Record<string, unknown>>;
     metadata?: Record<string, unknown>;
     renderedTextPreview?: string;
+    renderedHtmlLength?: number;
+    warnings?: string[];
     staticBaseline?: {
       resolvedUrl: string;
       statusCode: number;
@@ -38,7 +44,25 @@ export function ExploreWorkspace() {
   const router = useRouter();
   const [url, setUrl] = useState("https://");
   const [mode, setMode] = useState<"static" | "rendered" | "api">("static");
-  const [sourceConfigJson, setSourceConfigJson] = useState("");
+  const defaultRenderedPreset = `{
+  "steps": [
+    {
+      "type": "click",
+      "selector": "button:has-text('Apply filters')"
+    },
+    {
+      "type": "wait_for_timeout",
+      "milliseconds": 3000
+    },
+    {
+      "type": "wait_for_network_idle"
+    }
+  ],
+  "capture_buttons": true,
+  "capture_network": true,
+  "capture_anchors": true
+}`;
+  const [sourceConfigJson, setSourceConfigJson] = useState(defaultRenderedPreset);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ExploreResponse | null>(null);
   const [pending, startTransition] = useTransition();
@@ -68,7 +92,7 @@ export function ExploreWorkspace() {
         });
         const payload = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || payload?.ok === false) {
           setError(payload?.error ?? "Request failed.");
           setResult(null);
           return;
@@ -81,6 +105,11 @@ export function ExploreWorkspace() {
       }
     });
   }, [mode, sourceConfigJson, url]);
+
+  const applyBayerPreset = useCallback(() => {
+    setMode("rendered");
+    setSourceConfigJson(defaultRenderedPreset);
+  }, [defaultRenderedPreset]);
 
   function suggestPattern(kind: "listing" | "detail") {
     if (!result?.resolvedUrl) {
@@ -131,6 +160,9 @@ export function ExploreWorkspace() {
         title="Explore URL"
         actions={
           <ButtonGroup>
+            <ConsoleButton variant="secondary" type="button" onClick={applyBayerPreset}>
+              Bayer preset
+            </ConsoleButton>
             <ConsoleButton variant="primary" type="button" disabled={pending} onClick={() => void handleFetch()}>
               {pending ? "Fetching…" : "Fetch page"}
             </ConsoleButton>
@@ -217,7 +249,7 @@ export function ExploreWorkspace() {
 
       {result ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <Panel title="Rendered preview" eyebrow="Sandbox" className="min-h-[420px] overflow-hidden">
+          <Panel title="Static fetch result" eyebrow="Baseline preview" className="min-h-[420px] overflow-hidden">
             <iframe
               title="Page preview"
               sandbox=""
@@ -226,7 +258,7 @@ export function ExploreWorkspace() {
             />
           </Panel>
 
-          <Panel title="Extracted links" eyebrow={`${result.links.length} total`}>
+          <Panel title="Rendered fetch result" eyebrow={`${result.links.length} rendered anchors`}>
             <div className="flex max-h-[560px] flex-col gap-4 overflow-y-auto pr-1">
               {grouping.length === 0 ? (
                 <p className="text-xs text-[var(--muted)]">No http(s) anchor links found.</p>
@@ -256,14 +288,37 @@ export function ExploreWorkspace() {
       ) : null}
 
       {result ? (
-        <Panel title="Diagnostics" eyebrow="Rendered/API telemetry">
+        <Panel title="Diagnostics" eyebrow="Worker + rendered telemetry">
           <div className="space-y-3 text-xs">
             <p className="text-[var(--muted)]">
-              Content type: {result.diagnostics?.contentType ?? "n/a"} · Requests captured: {result.diagnostics?.detectedRequests?.length ?? 0} · JSON endpoint candidates:{" "}
-              {result.diagnostics?.jsonEndpoints?.length ?? 0}
+              Worker status: {result.diagnostics?.workerConnectionStatus ?? (result.mode === "static" ? "n/a" : "unknown")} · Content type:{" "}
+              {result.diagnostics?.contentType ?? "n/a"} · Requests captured: {result.diagnostics?.detectedRequests?.length ?? 0} · JSON endpoint candidates:{" "}
+              {result.diagnostics?.jsonEndpoints?.length ?? 0} · Rendered HTML bytes: {result.diagnostics?.renderedHtmlLength ?? 0}
             </p>
+            <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
+              <p className="mb-1 font-semibold text-slate-800">Rendered fetch config sent</p>
+              <pre className="max-h-52 overflow-auto text-[10px] text-slate-700">
+                {JSON.stringify(result.diagnostics?.renderedConfigSent ?? {}, null, 2)}
+              </pre>
+            </div>
             {result.diagnostics?.staticBaseline ? (
               <p className="text-[var(--muted)]">
+            {result.diagnostics?.buttonsDetected?.length ? (
+              <div className="rounded border border-[var(--panel-border)] bg-slate-50 p-2">
+                <p className="mb-1 font-semibold text-slate-800">Buttons detected</p>
+                <pre className="max-h-52 overflow-auto text-[10px] text-slate-700">
+                  {JSON.stringify(result.diagnostics.buttonsDetected.slice(0, 120), null, 2)}
+                </pre>
+              </div>
+            ) : null}
+            {result.diagnostics?.warnings?.length ? (
+              <div className="rounded border border-amber-200 bg-amber-50 p-2">
+                <p className="mb-1 font-semibold text-amber-900">Warnings</p>
+                <pre className="max-h-52 overflow-auto text-[10px] text-amber-900">
+                  {JSON.stringify(result.diagnostics.warnings, null, 2)}
+                </pre>
+              </div>
+            ) : null}
                 Static baseline: HTTP {result.diagnostics.staticBaseline.statusCode} · {result.diagnostics.staticBaseline.linksCount} links from{" "}
                 <span className="font-mono">{result.diagnostics.staticBaseline.resolvedUrl}</span>
               </p>

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     glassspider_worker_poll_interval_seconds: int = 15
     glassspider_worker_scheduler_interval_seconds: int = 300
     glassspider_worker_user_agent: str = "GlassspiderBot/0.1 (+https://laightworks.com)"
+    glassspider_worker_debug_token: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

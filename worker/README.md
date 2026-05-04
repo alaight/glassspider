@@ -22,6 +22,7 @@ Use `worker/.env.example`:
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 GLASSSPIDER_WORKER_SECRET=
+GLASSSPIDER_WORKER_DEBUG_TOKEN=
 GLASSSPIDER_WORKER_ID=glassspider-worker
 GLASSSPIDER_WORKER_POLL_INTERVAL_SECONDS=15
 GLASSSPIDER_WORKER_SCHEDULER_INTERVAL_SECONDS=300
@@ -43,7 +44,7 @@ From the **repository root**:
 ```bash
 cp worker/fly.toml.example worker/fly.toml
 fly launch -c worker/fly.toml --no-deploy
-fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GLASSSPIDER_WORKER_SECRET=...
+fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GLASSSPIDER_WORKER_SECRET=... GLASSSPIDER_WORKER_DEBUG_TOKEN=...
 fly deploy -c worker/fly.toml -a glassspider
 ```
 

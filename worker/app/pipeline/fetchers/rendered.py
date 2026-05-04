@@ -44,7 +44,31 @@ async def _apply_step(page: Any, step: dict[str, Any], timeout_ms: int) -> None:
         selector = str(step.get("selector") or "").strip()
         if not selector:
             raise ValueError("Rendered step `click` requires `selector`.")
-        await page.click(selector, timeout=timeout_ms)
+        selectors = [selector]
+        if "apply filters" in selector.lower():
+            selectors.extend(
+                [
+                    "button:has-text('Apply filters')",
+                    "text=Apply filters",
+                    "button >> text=Apply filters",
+                    "[aria-label*='Apply']",
+                ]
+            )
+
+        last_error: Exception | None = None
+        seen: set[str] = set()
+        for candidate in selectors:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            try:
+                await page.locator(candidate).first.click(timeout=timeout_ms)
+                return
+            except Exception as exc:
+                last_error = exc
+
+        if last_error is not None:
+            raise last_error
         return
 
     if step_type == "fill":
@@ -74,7 +98,7 @@ async def _apply_step(page: Any, step: dict[str, Any], timeout_ms: int) -> None:
         return
 
     if step_type == "wait_for_timeout":
-        duration = int(step.get("timeout_ms") or step.get("value") or 1000)
+        duration = int(step.get("milliseconds") or step.get("timeout_ms") or step.get("value") or 1000)
         await page.wait_for_timeout(max(duration, 0))
         return
 
@@ -92,7 +116,8 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
     wait_until = wait_until if wait_until in {"load", "domcontentloaded", "networkidle"} else "networkidle"
 
     discovered_requests: list[dict[str, Any]] = []
-    request_limit = int(rendered_config.get("request_capture_limit") or 40)
+    capture_network = bool(rendered_config.get("capture_network", True))
+    request_limit = int(rendered_config.get("request_capture_limit") or 40) if capture_network else 0
     response_tasks: list[asyncio.Task[Any]] = []
 
     try:
@@ -138,13 +163,15 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
         def on_response(response: Any) -> None:
             response_tasks.append(asyncio.create_task(handle_response(response)))
 
-        page.on("response", on_response)
+        if capture_network:
+            page.on("response", on_response)
 
         metadata: dict[str, Any] = {
             "fetch_mode": "rendered",
             "wait_until": wait_until,
             "timeout_ms": timeout_ms,
             "step_errors": [],
+            "warnings": [],
         }
         final_url = url
         status_code: int | None = None
@@ -172,6 +199,13 @@ async def fetch_rendered(*, url: str, rendered_config: dict[str, Any], user_agen
             text = (await page.inner_text("body"))[:500_000]
             metadata["title"] = title
             metadata["rendered_html_size"] = len(html or "")
+            capture_buttons = bool(rendered_config.get("capture_buttons", True))
+            if capture_buttons:
+                try:
+                    buttons = await page.locator("button").all_inner_texts()
+                    metadata["buttons_detected"] = [value.strip() for value in buttons if value.strip()][:100]
+                except Exception as exc:
+                    metadata["warnings"].append(f"Button capture failed: {exc}")
             if response_tasks:
                 await asyncio.gather(*response_tasks, return_exceptions=True)
         finally:
